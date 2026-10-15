@@ -14,14 +14,20 @@ uv run torpedo setup                         # global setup values (read-only)
 uv run torpedo cabs                          # cab bank 0, * = current (--bank 1..4: IR banks)
 uv run torpedo cab                           # current cab and its mics
 uv run torpedo cab darkprinz                 # select by index, name or unique part of it
+uv run torpedo ir                            # the two IR slots (IR mode: preset_mode=2)
+uv run torpedo ir 1 v30-906-e                # load an IR from the ML bank into slot 1
 uv run torpedo --fake params                 # simulated device, nothing is sent
 ```
 
 `set` edits the current preset in the unit's memory only; nothing is saved
 (saving isn't implemented yet). Every value is range-checked before anything
 is sent, and in arcade mode the parameters the Torpedo would ignore are
-refused (see `src/torpedo/protocol.py`). IR selection from banks 1–4 isn't
-mapped yet, so those parameters are read-only.
+refused (see `src/torpedo/protocol.py`).
+
+Presets have three modes (PRESET_MODE): 0 = simulation (one cab, two mics),
+1 = arcade (simplified controls driving the simulation ones), 2 = IR (two IR
+slots). IR slots can load from the ML bank; the user IR banks are empty on
+our unit, so they aren't supported yet.
 
 The Torpedo has one cab and two mics (A and B) picked from that cab's own 8
 mics. `cab` keeps each mic on the same mic when the new cab has it, like

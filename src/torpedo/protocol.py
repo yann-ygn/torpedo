@@ -70,10 +70,10 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("SIMUHP", 0, 1),
     ("SIMUHP_PREVIEW", *RO),  # 2 = play a cab uploaded with 6e/6f/70 (Remote library preview)
     ("SIMUHP_SPEAKER", 0, 31),  # index into cab bank 0 (32 cabs on this unit)
-    ("SIMUHP_WAVE0", *RO),
-    ("SIMUHP_WAVE1", *RO),
-    ("SIMUHP_FOLDER_IR_0", *RO),
-    ("SIMUHP_FOLDER_IR_1", *RO),
+    ("SIMUHP_WAVE0", 0, 85),  # IR mode, slot 1: index in the folder's bank (ML bank: 86 IRs)
+    ("SIMUHP_WAVE1", 0, 85),  # IR mode, slot 2
+    ("SIMUHP_FOLDER_IR_0", 0, 0),  # 0 = bank 1 (ML); user banks 2-4 are empty on this unit
+    ("SIMUHP_FOLDER_IR_1", 0, 0),
     ("SIMUHP_MIC", 0, 7),  # index into the cab's mic list
     ("SIMUHP_DISTANCE", *KNOB),
     ("SIMUHP_CENTER", *KNOB),
@@ -95,7 +95,7 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("ARCADE_TONE", 0, 44),
     ("ARCADE_CONTOUR", 0, 40),  # UI % = value * 2.5
     ("ARCADE_LEVEL", 0, 107),
-    ("PRESET_MODE", 0, 1),  # ARCADE / SIMULATION below
+    ("PRESET_MODE", 0, 2),  # SIMULATION / ARCADE / IR below
     ("SIMUHP_LEVEL", 0, 107),
     ("SIMUHP_PHASE", 0, 1),
     ("SIMUHP_MUTE", 0, 1),
@@ -115,7 +115,11 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
 ])]
 PARAM_BY_NAME = {p.name: p for p in PARAMS}
 PRESET_MODE = PARAM_BY_NAME["PRESET_MODE"].index
-ARCADE, SIMULATION = 1, 0  # PRESET_MODE values
+SIMULATION, ARCADE, IR = 0, 1, 2  # PRESET_MODE values; IR = two IR slots instead of a cab
+MODE_NAMES = {SIMULATION: "simulation", ARCADE: "arcade", IR: "ir"}
+# IR slot n = SIMUHP_FOLDER_IR_n (folder) + SIMUHP_WAVEn (index in that folder's
+# bank). Folder 0 = bank 1 (ML IRs); folder f = bank f + 1 is a guess.
+FOLDER_BANK_OFFSET = 1
 
 # Arcade mode is a front end over the same parameters: its 6 ARCADE_* macros
 # recompute simulation parameters (tools/modeprobe.py, 2026-10-15):

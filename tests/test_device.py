@@ -102,6 +102,19 @@ def test_select_cab_moves_mic_b_in_simulation_mode(torpedo):
     assert torpedo.select_cab(0x12, cabs) == {0x08: 0x12, 0x0D: 3, 0x26: 2}
 
 
+def test_select_ir(torpedo):
+    irs = torpedo.read_irs()
+    assert len(irs) == 86 and irs[85].name == "ML-FRMN-V30-906-E"
+    with pytest.raises(IgnoredWrite):  # A001 is in arcade mode
+        torpedo.select_ir(0, 85, irs)
+    torpedo.set_param(find_param("preset_mode"), 2)
+    assert torpedo.select_ir(0, 85, irs) == {0x09: 85}  # folder already 0
+    assert torpedo.select_ir(1, 15, irs) == {0x0A: 15}
+    for bad in ((2, 0), (0, 86)):
+        with pytest.raises(ValueError):
+            torpedo.select_ir(*bad, irs)
+
+
 def test_select_preset(torpedo):
     changes = torpedo.select_preset(1)
     assert changes == {0x13: 30, 0x17: 30, 0x1A: 3, 0x20: 30}

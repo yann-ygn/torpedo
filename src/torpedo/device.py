@@ -11,7 +11,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, HEARTBEAT, MSG_CAB, MSG_EMPTY,
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, FOLDER_BANK_OFFSET, HEARTBEAT, MSG_CAB,
+                       MSG_EMPTY,
                        MSG_INFO, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP, PARAM_BY_NAME,
                        PARAMS, PRESET_MODE, PRESET_MODIFIED, PRESETS, QUERY_BANK, QUERY_INFO,
                        QUERY_PARAMS, QUERY_SETUP, REPORT_LEN, SETUP, SETUP_PRESET, Cab, Param,
@@ -21,6 +22,8 @@ VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
 SPEAKER, MIC, MIC_2, MUTE, MUTE_2 = (PARAM_BY_NAME[n].index for n in (
     "SIMUHP_SPEAKER", "SIMUHP_MIC", "SIMUHP_MIC_2", "SIMUHP_MUTE", "SIMUHP_MUTE_2"))
+WAVES = (PARAM_BY_NAME["SIMUHP_WAVE0"].index, PARAM_BY_NAME["SIMUHP_WAVE1"].index)
+FOLDERS = (PARAM_BY_NAME["SIMUHP_FOLDER_IR_0"].index, PARAM_BY_NAME["SIMUHP_FOLDER_IR_1"].index)
 READ_TIMEOUT_MS = 100
 TIMEOUT = 2.0
 
@@ -151,8 +154,8 @@ class Torpedo:
         if self.params[param.index] == value:
             return {}  # the device would not answer
         if self.params[PRESET_MODE] == ARCADE and param.index not in ARCADE_EDITABLE:
-            raise IgnoredWrite(f"{param.name} can't be edited in arcade mode "
-                               "(set preset_mode=0 for simulation mode first)")
+            raise IgnoredWrite(f"{param.name} can't be edited in arcade mode (set "
+                               "preset_mode=0 for simulation or preset_mode=2 for ir first)")
         echo = bytes([MSG_PARAM, param.index, value])
         try:
             msgs = self._exchange(MSG_PARAM, param.index, value, until=lambda p: p[:3] == echo)
@@ -182,6 +185,20 @@ class Torpedo:
             if name and name in cabs[index].mics:
                 changes |= self.set_param(PARAMS[m], cabs[index].mics.index(name))
         return changes
+
+    def read_irs(self, folder: int = 0) -> list[Cab]:
+        """IRs an IR slot can pick from in `folder` (0 = the ML bank)."""
+        return self.read_cabs(folder + FOLDER_BANK_OFFSET)
+
+    def select_ir(self, slot: int, index: int, irs: list[Cab] | None = None) -> dict[int, int]:
+        """Load IR `index` of folder 0 into IR slot 0 or 1 (heard in IR mode)."""
+        if slot not in (0, 1):
+            raise ValueError("IR slot must be 1 or 2")
+        irs = irs if irs is not None else self.read_irs()
+        if not 0 <= index < len(irs):
+            raise ValueError(f"IR must be 0..{len(irs) - 1}")
+        changes = self.set_param(PARAMS[FOLDERS[slot]], 0)
+        return changes | self.set_param(PARAMS[WAVES[slot]], index)
 
     @property
     def preset(self) -> int:

@@ -49,9 +49,10 @@ polling. Without polling, the reply to a write may also be a bare `05`
 | `04 01` | `0b …` | info: `0b 02 02 01 04 17 03 "032C4B94"` → bytes 1..6 unknown (firmware 4.23?), then the serial as ASCII |
 | `04 0a` | 51 × `01 idx val` | every parameter of the current preset (see table) |
 | `04 0b` | 18 × `0c idx val` | setup values (see table) |
-| `04 08 <bank>` | N × `06 bank idx part …`, then `04 10 bank …` | cabinet bank contents (layout below). Bank 0 = 32 cabs × 4 parts (Two notes + partners: Black Bear, Mirador, Suhr/Celestion…), bank 1 = 86 IRs × 2 parts ("ML-FRMN-FREEDOM"…), banks 2–4 empty user IR slots ("Generic wave file") |
+| `04 08 <bank>` | N × `06 bank idx part …`, then `04 10 bank …` | cabinet bank contents (layout below). Bank 0 = 32 cabs × 4 parts (Two notes + partners: Black Bear, Mirador, Suhr/Celestion…), bank 1 = 86 IRs × 2 parts ("ML-FRMN-FREEDOM"…), banks 2–4 = user IR banks, no records on this unit (only the `04 10` end marker) |
 | `04 09 81` | 129 × `03 idx flag name` | legacy speaker names (v3 era: "BDELUXE 1 RBN", "USER", "RECORDING …", "… 2MICS"); count = arg & 0x7F + 1 *(?)*. `04 09 80` returned a single entry |
 | `04 33`, `04 34` | `04 0f slot name` + 3 × `04 31 slot n` | names of the IRs loaded in mic slot 0 / 1. Slot 0 follows SIMUHP_SPEAKER (A001: "LuxTweeDe" = bank 0 #16); slot 1 said "Brit VintC" with mic B muted *(?)* |
+| `04 15 <bank> <idx>` | `6e …` ×2, `6f …` ×~45, `70 …` | waveform of an IR, for the display (Remote sends `04 15 01 55` after loading ML IR 85 into a slot); `6e` = header with the IR name, `6f` = data chunks, `70` = end |
 
 ### Cab records (`06 bank idx part …`)
 
@@ -75,9 +76,17 @@ writes nothing when the index is unchanged. When the new cab lacks the mic it
 picked something else (LuxTweeDe mic 5 "Dyn 7b" → DarkPrinz mic 3), rule
 unknown. Mic B was never rewritten (it was muted, and arcade mode ignores
 SIMUHP_MIC_2 anyway); `torpedo cab` keeps its name too in simulation mode.
-Selecting from banks 1–4
-(SIMUHP_FOLDER_IR_*, SIMUHP_WAVE*) is not captured yet.
-| `04 15 01` | `6e …` ×2, `6f …` ×~45, `70 …` | waveform of the loaded IR (for the display); `6f` = data chunks, `70` = end |
+
+### IR mode (2026-10-15-irs capture)
+
+PRESET_MODE = 2 replaces the cab + 2 mics with two IR slots. SIMUHP (`01 06`)
+is the global cab-sim toggle. Loading an IR into slot n: Remote sends
+SIMUHP_PREVIEW = 0, SIMUHP_FOLDER_IR_n = 0, then SIMUHP_WAVEn = index (`01 09
+55` = ML IR 85 "ML-FRMN-V30-906-E", `01 0a 0f` = ML IR 15), then `04 15 01
+idx` for the waveform. Folder 0 = bank 1 (ML); other folders are presumably
+the user banks 2–4, empty here. Per-slot controls are the mic A/B ones:
+SIMUHP_LEVEL/PHASE/MUTE for slot 1, `_2` for slot 2. The amp, EQ and reverb
+use the same parameters as simulation mode.
 
 ## Writes
 
@@ -95,8 +104,8 @@ the parameter can't be edited in the preset's mode (next section).
 
 ### Arcade vs simulation mode
 
-Both modes are front ends over the same 51 parameters; PRESET_MODE (0x22)
-picks one (1 = arcade, 0 = simulation). Probed parameter by parameter on the
+The modes are front ends over the same 51 parameters; PRESET_MODE (0x22)
+picks one (0 = simulation, 1 = arcade, 2 = IR). Probed parameter by parameter on the
 unit (`tools/modeprobe.py`, each write one step from A001, then reselect):
 
 - Arcade mode accepts only the 6 `ARCADE_*` macros, SIMUHP_SPEAKER, SIMUHP_MIC,
@@ -113,7 +122,7 @@ unit (`tools/modeprobe.py`, each write one step from A001, then reselect):
   | ARCADE_CONTOUR | EQ_L_GAIN0, EQ_L_GAIN4 |
   | ARCADE_LEVEL | PRESET_LEVEL |
 
-- Simulation mode accepts every parameter; `ARCADE_*` writes are then only
+- Simulation and IR modes accept every parameter; `ARCADE_*` writes are then only
   stored (nothing recomputed). Switching mode recomputes nothing either, so
   simulation mode starts from the values arcade mode produced.
 
@@ -163,10 +172,10 @@ those of preset A001.
 | 06 | SIMUHP | 1 | cab sim on/off |
 | 07 | SIMUHP_PREVIEW | 0 | 2 = play the uploaded preview cab |
 | 08 | SIMUHP_SPEAKER | 16 | cab = bank 0 index (16 = LuxTweeDe) |
-| 09 | SIMUHP_WAVE0 | 0 | |
-| 0A | SIMUHP_WAVE1 | 0 | |
-| 0B | SIMUHP_FOLDER_IR_0 | 0 | |
-| 0C | SIMUHP_FOLDER_IR_1 | 0 | |
+| 09 | SIMUHP_WAVE0 | 0 | IR slot 1: index in the folder's bank |
+| 0A | SIMUHP_WAVE1 | 0 | IR slot 2 |
+| 0B | SIMUHP_FOLDER_IR_0 | 0 | IR slot 1 folder (0 = ML bank) |
+| 0C | SIMUHP_FOLDER_IR_1 | 0 | IR slot 2 folder |
 | 0D | SIMUHP_MIC | 5 | mic A: index into the cab's mic list (5 = "Dyn 7b" on LuxTweeDe) |
 | 0E | SIMUHP_DISTANCE | 0 | |
 | 0F | SIMUHP_CENTER | 17 | |
@@ -184,7 +193,7 @@ those of preset A001.
 | 1F | ARCADE_TONE | 38 | |
 | 20 | ARCADE_CONTOUR | 21 | 0..40, UI % = val × 2.5 (21 = 52%, 22 = 55%) |
 | 21 | ARCADE_LEVEL | 87 | |
-| 22 | PRESET_MODE | 1 | 1 = arcade, 0 = simulation |
+| 22 | PRESET_MODE | 1 | 0 = simulation, 1 = arcade, 2 = IR |
 | 23 | SIMUHP_LEVEL | 95 | |
 | 24 | SIMUHP_PHASE | 0 | |
 | 25 | SIMUHP_MUTE | 0 | |

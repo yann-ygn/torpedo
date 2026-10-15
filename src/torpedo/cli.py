@@ -1,10 +1,9 @@
 import argparse
 import sys
 
-from .device import MIC, MIC_2, MUTE, MUTE_2, SPEAKER, Torpedo
-from .protocol import Cab
-from .protocol import (ARCADE, ARCADE_EDITABLE, PARAMS, PRESET_MODE, PRESET_MODIFIED, PRESETS,
-                       SETUP, find_param, preset_name)
+from .device import MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
+from .protocol import (ARCADE, ARCADE_EDITABLE, IR, MODE_NAMES, PARAM_BY_NAME, PARAMS,
+                       PRESET_MODE, PRESET_MODIFIED, PRESETS, SETUP, Cab, find_param, preset_name)
 
 
 def parse_assignment(s: str):
@@ -55,7 +54,7 @@ def cmd_info(t: Torpedo, args):
 def cmd_params(t: Torpedo, args):
     values = t.read_params()
     arcade = values[PRESET_MODE] == ARCADE
-    print(f"mode: {'arcade' if arcade else 'simulation'} (PRESET_MODE={values[PRESET_MODE]})")
+    print(f"mode: {MODE_NAMES.get(values[PRESET_MODE], '?')} (PRESET_MODE={values[PRESET_MODE]})")
     for p in PARAMS:
         rng = f"{p.lo}..{p.hi}" if p.writable else "read-only"
         if p.writable and arcade and p.index not in ARCADE_EDITABLE:
@@ -98,20 +97,44 @@ def cmd_setup(t: Torpedo, args):
 
 
 def find_cab(cabs: list[Cab], key: str) -> Cab:
-    """By index (`18`, `0x12`), name (case-insensitive) or a unique part of the name."""
+    """By index (`18`, `0x12`), name (case-insensitive) or a unique part of the name.
+    A number that isn't a valid index is matched against the names (`906`)."""
     try:
         i = int(key, 0)
     except ValueError:
-        k = key.lower()
-        found = ([c for c in cabs if c.name.lower() == k]
-                 or [c for c in cabs if k in c.name.lower()])
-        if len(found) == 1:
-            return found[0]
-        raise ValueError(f"cab '{key}' " + ("is ambiguous: " + ", ".join(c.name for c in found)
-                                            if found else "not found (see `torpedo cabs`)"))
-    if not 0 <= i < len(cabs):
-        raise ValueError(f"cab must be 0..{len(cabs) - 1}")
-    return cabs[i]
+        i = -1
+    if 0 <= i < len(cabs):
+        return cabs[i]
+    k = key.lower()
+    found = ([c for c in cabs if c.name.lower() == k]
+             or [c for c in cabs if k in c.name.lower()])
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        raise ValueError(f"'{key}' not found (see `torpedo cabs [--bank N]`)")
+    names = ", ".join(c.name for c in found[:8]) + (f", ... ({len(found)} matches)" if len(found) > 8 else "")
+    raise ValueError(f"'{key}' is ambiguous: {names}")
+
+
+SLOT_PARAMS = [("SIMUHP_LEVEL", "SIMUHP_PHASE", "SIMUHP_MUTE"),
+               ("SIMUHP_LEVEL_2", "SIMUHP_PHASE_2", "SIMUHP_MUTE_2")]
+
+
+def cmd_ir(t: Torpedo, args):
+    irs = t.read_irs()
+    before = t.read_params()
+    if args.ir is not None:
+        print_changes(before, t.select_ir(args.slot - 1, find_cab(irs, args.ir).index, irs))
+    mode = t.params[PRESET_MODE]
+    for n, (wave, names) in enumerate(zip(WAVES, SLOT_PARAMS)):
+        level, phase, mute = (t.params[PARAM_BY_NAME[p].index] for p in names)
+        i = t.params[wave]
+        name = irs[i].name if i < len(irs) else "?"
+        print(f"slot {n + 1}: {i} {name}  level={level}" + ("  phase inverted" if phase else "")
+              + ("  muted" if mute else ""))
+    if mode != IR:
+        print(f"(preset is in {MODE_NAMES.get(mode, '?')} mode: the IR slots play in ir mode, "
+              "`torpedo set preset_mode=2`)")
 
 
 def cmd_cabs(t: Torpedo, args):
@@ -158,6 +181,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("cab", help="show or select the cab (keeps the same mic when it can)")
     p.add_argument("cab", nargs="?", metavar="CAB", help="index, name or part of the name")
     p.set_defaults(func=cmd_cab)
+    p = sub.add_parser("ir", help="show the IR slots, or load an IR from the ML bank into one")
+    p.add_argument("slot", nargs="?", type=int, choices=(1, 2))
+    p.add_argument("ir", nargs="?", metavar="IR", help="index, name or part of the name")
+    p.set_defaults(func=cmd_ir)
     return ap
 
 

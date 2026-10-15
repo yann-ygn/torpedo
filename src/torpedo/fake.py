@@ -33,6 +33,7 @@ CABS = {0: ("Blonde 63", "Two Notes Audio Engineering", TWO_NOTES_MICS),
         0x12: ("DarkPrinz", "Black Bear Studio", ["Cnd 840", "Cnd BLX414", "Rbn 160", "Dyn 421",
                                                   "Dyn 57", "Dyn 906", "Dyn Bass20", "Dyn TG201"])}
 BANK0_SIZE = 32
+ML_IRS = [f"ML-FRMN-{i:02d}" for i in range(85)] + ["ML-FRMN-V30-906-E"]  # bank 1, 86 IRs
 
 
 def report(*payload: int) -> list[int]:
@@ -99,6 +100,9 @@ class FakeHid:
                     name, maker, mics = CABS.get(i, (f"Cab {i}", "Two Notes Audio Engineering",
                                                      TWO_NOTES_MICS))
                     self.queue.extend(cab_reports(0, i, name, maker, mics))
+            elif val == 1:  # ML IRs: only parts 0-1
+                for i, name in enumerate(ML_IRS):
+                    self.queue.extend(cab_reports(1, i, name, "", [""] * 8)[:2])
             self.queue.append(report(MSG_QUERY, BANK_END, val, 3, *b"Noise Factory"))
         elif cmd == MSG_PARAM and idx < len(self.params):
             self._set_param(idx, val)
