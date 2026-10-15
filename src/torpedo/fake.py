@@ -8,9 +8,10 @@ capture raise, so tests also check that nothing unknown gets sent.
 
 from collections import deque
 
-from .protocol import (ARCADE, ARCADE_EDITABLE, MSG_EMPTY, MSG_INFO, MSG_PARAM, MSG_POLL,
-                       MSG_QUERY, MSG_SETUP, PRESET_MODE, PRESET_MODIFIED, PRESETS, QUERY_INFO,
-                       QUERY_PARAMS, QUERY_SETUP, REPORT_LEN, SETUP_PRESET)
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, MIC_SLOT, MSG_CAB, MSG_EMPTY,
+                       MSG_INFO, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP, PRESET_MODE,
+                       PRESET_MODIFIED, PRESETS, QUERY_BANK, QUERY_INFO, QUERY_PARAMS,
+                       QUERY_SETUP, REPORT_LEN, SETUP_PRESET)
 
 # Read from the real unit (preset A001 and setup, 2026-10-15)
 A001 = [0, 5, 0, 127, 127, 1, 1, 0, 16, 0, 0, 0, 0, 5, 0, 17, 1, 1, 0, 21, 20, 20, 20, 21, 87,
@@ -21,8 +22,31 @@ CONTOUR, EQ_GAIN0, EQ_GAIN4 = 0x20, 0x13, 0x17
 STALE = bytes(range(0xC0, 0xC0 + REPORT_LEN))  # the device reuses its buffer
 
 
+TWO_NOTES_MICS = ["Knightfall", "Cnd 87", "Rbn 121", "Rbn 160", "Dyn 421", "Dyn 57",
+                  "Dyn Bass20", "Dyn Bass52"]
+# Bank 0 as read from the unit, except the unnamed fillers
+CABS = {0: ("Blonde 63", "Two Notes Audio Engineering", TWO_NOTES_MICS),
+        1: ("Brit 65C", "Two Notes Audio Engineering", TWO_NOTES_MICS),
+        2: ("Brit VintC", "Two Notes Audio Engineering", TWO_NOTES_MICS),
+        0x10: ("LuxTweeDe", "Hop Pole Studios", ["Cnd Gem II", "Cnd S5E", "Rbn 1R", "Dyn 421",
+                                                 "Dyn 57", "Dyn 7b", "Dyn Bass112", "Dyn i5"]),
+        0x12: ("DarkPrinz", "Black Bear Studio", ["Cnd 840", "Cnd BLX414", "Rbn 160", "Dyn 421",
+                                                  "Dyn 57", "Dyn 906", "Dyn Bass20", "Dyn TG201"])}
+BANK0_SIZE = 32
+
+
 def report(*payload: int) -> list[int]:
     return list(bytes(payload) + STALE[len(payload):])
+
+
+def cab_reports(bank: int, idx: int, name: str, maker: str, mics: list[str]) -> list[list[int]]:
+    def pad(s: str, n: int) -> bytes:
+        return s.encode("latin-1")[:n].ljust(n, bytes(1))
+    slots = b"".join(pad(m, MIC_SLOT) for m in mics)
+    return [report(MSG_CAB, bank, idx, 0, 0x01, 0x08, 0xD8, *pad(name, REPORT_LEN - 7)),
+            report(MSG_CAB, bank, idx, 1, *bytes(24), *slots[:3 * MIC_SLOT]),
+            report(MSG_CAB, bank, idx, 2, *slots[3 * MIC_SLOT:]),
+            report(MSG_CAB, bank, idx, 3, *pad(maker, 32))]
 
 
 class FakeHid:
@@ -69,6 +93,13 @@ class FakeHid:
             self.queue.extend(report(MSG_PARAM, i, v) for i, v in enumerate(self.params))
         elif cmd == MSG_QUERY and idx == QUERY_SETUP:
             self.queue.extend(report(MSG_SETUP, i, v) for i, v in enumerate(self.setup))
+        elif cmd == MSG_QUERY and idx == QUERY_BANK and val <= 4:
+            if val == 0:
+                for i in range(BANK0_SIZE):
+                    name, maker, mics = CABS.get(i, (f"Cab {i}", "Two Notes Audio Engineering",
+                                                     TWO_NOTES_MICS))
+                    self.queue.extend(cab_reports(0, i, name, maker, mics))
+            self.queue.append(report(MSG_QUERY, BANK_END, val, 3, *b"Noise Factory"))
         elif cmd == MSG_PARAM and idx < len(self.params):
             self._set_param(idx, val)
         elif cmd == MSG_SETUP and idx == SETUP_PRESET and val < PRESETS:

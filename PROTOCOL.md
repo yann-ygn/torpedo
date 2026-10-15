@@ -49,9 +49,31 @@ polling. Without polling, the reply to a write may also be a bare `05`
 | `04 01` | `0b …` | info: `0b 02 02 01 04 17 03 "032C4B94"` → bytes 1..6 unknown (firmware 4.23?), then the serial as ASCII |
 | `04 0a` | 51 × `01 idx val` | every parameter of the current preset (see table) |
 | `04 0b` | 18 × `0c idx val` | setup values (see table) |
-| `04 08 <bank>` | N × `06 bank idx part …`, then `04 10 bank …` | cabinet bank contents: 4 parts per cabinet (name, data, mic names, maker). Bank 0 = 128 Two notes cabs, bank 1 = 172 entries ("ML-FRMN-FREEDOM"…), banks 2–4 empty user IR slots ("Generic wave file") |
+| `04 08 <bank>` | N × `06 bank idx part …`, then `04 10 bank …` | cabinet bank contents (layout below). Bank 0 = 32 cabs × 4 parts (Two notes + partners: Black Bear, Mirador, Suhr/Celestion…), bank 1 = 86 IRs × 2 parts ("ML-FRMN-FREEDOM"…), banks 2–4 empty user IR slots ("Generic wave file") |
 | `04 09 81` | 129 × `03 idx flag name` | legacy speaker names (v3 era: "BDELUXE 1 RBN", "USER", "RECORDING …", "… 2MICS"); count = arg & 0x7F + 1 *(?)*. `04 09 80` returned a single entry |
-| `04 33`, `04 34` | `04 0f slot name` + 3 × `04 31 slot n` | names of the IRs loaded in mic slot 0 / 1 ("Lone Star 23 - WTE", "Brit VintC") |
+| `04 33`, `04 34` | `04 0f slot name` + 3 × `04 31 slot n` | names of the IRs loaded in mic slot 0 / 1. Slot 0 follows SIMUHP_SPEAKER (A001: "LuxTweeDe" = bank 0 #16); slot 1 said "Brit VintC" with mic B muted *(?)* |
+
+### Cab records (`06 bank idx part …`)
+
+| part | content |
+|---|---|
+| 0 | `01 08 d8`, then the cab name from byte 7 |
+| 1 | 24 unknown bytes, then mic names 0–2 (12-byte slots from byte 28, not always NUL-terminated) |
+| 2 | mic names 3–7 (12-byte slots from byte 4) |
+| 3 | maker name in bytes 4–35, then unknown (checksum?) |
+
+Each cab has its own 8 mics: SIMUHP_MIC is an index into the selected cab's
+list ("Knightfall", mic 0 of the Two notes cabs, is a real mic name, as in Remote's UI).
+
+### Cab selection (2026-10-15-cabs capture)
+
+SIMUHP_SPEAKER is an index into bank 0 (`01 08 n`); arcade mode accepts it
+too. When selecting a cab, Torpedo Remote also writes SIMUHP_MIC so the same
+mic name stays selected (DarkPrinz mic 3 "Dyn 421" → Brit 65C mic 4), and
+writes nothing when the index is unchanged. When the new cab lacks the mic it
+picked something else (LuxTweeDe mic 5 "Dyn 7b" → DarkPrinz mic 3), rule
+unknown. Mic B was never rewritten. Selecting from banks 1–4
+(SIMUHP_FOLDER_IR_*, SIMUHP_WAVE*) is not captured yet.
 | `04 15 01` | `6e …` ×2, `6f …` ×~45, `70 …` | waveform of the loaded IR (for the display); `6f` = data chunks, `70` = end |
 
 ## Writes
@@ -74,8 +96,9 @@ Both modes are front ends over the same 51 parameters; PRESET_MODE (0x22)
 picks one (1 = arcade, 0 = simulation). Probed parameter by parameter on the
 unit (`tools/modeprobe.py`, each write one step from A001, then reselect):
 
-- Arcade mode accepts only the 6 `ARCADE_*` macros, SIMUHP_MIC, REVERB_ROOM,
-  EQ_L_FREQ_F0..F4 (and PRESET_MODE). Every other write is silently dropped.
+- Arcade mode accepts only the 6 `ARCADE_*` macros, SIMUHP_SPEAKER, SIMUHP_MIC,
+  REVERB_ROOM, EQ_L_FREQ_F0..F4 (and PRESET_MODE). Every other write is
+  silently dropped.
 - Each macro recomputes simulation parameters, reported before its echo:
 
   | macro | recomputes |
@@ -136,12 +159,12 @@ those of preset A001.
 | 05 | SIMUAMP_CHARACTER | 1 | |
 | 06 | SIMUHP | 1 | cab sim on/off |
 | 07 | SIMUHP_PREVIEW | 0 | 2 = play the uploaded preview cab |
-| 08 | SIMUHP_SPEAKER | 16 | |
+| 08 | SIMUHP_SPEAKER | 16 | cab = bank 0 index (16 = LuxTweeDe) |
 | 09 | SIMUHP_WAVE0 | 0 | |
 | 0A | SIMUHP_WAVE1 | 0 | |
 | 0B | SIMUHP_FOLDER_IR_0 | 0 | |
 | 0C | SIMUHP_FOLDER_IR_1 | 0 | |
-| 0D | SIMUHP_MIC | 5 | mic A type; 7 = "Dyn 112" in the capture |
+| 0D | SIMUHP_MIC | 5 | mic A: index into the cab's mic list (5 = "Dyn 7b" on LuxTweeDe) |
 | 0E | SIMUHP_DISTANCE | 0 | |
 | 0F | SIMUHP_CENTER | 17 | |
 | 10 | SIMUHP_POSITION | 1 | front/back |

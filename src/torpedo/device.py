@@ -11,13 +11,15 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .protocol import (ARCADE, ARCADE_EDITABLE, HEARTBEAT, MSG_EMPTY, MSG_INFO, MSG_PARAM,
-                       MSG_POLL, MSG_QUERY, MSG_SETUP, PARAMS, PRESET_MODE, PRESET_MODIFIED,
-                       PRESETS, QUERY_INFO, QUERY_PARAMS, QUERY_SETUP, REPORT_LEN, SETUP,
-                       SETUP_PRESET, Param)
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, HEARTBEAT, MSG_CAB, MSG_EMPTY,
+                       MSG_INFO, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP, PARAM_BY_NAME,
+                       PARAMS, PRESET_MODE, PRESET_MODIFIED, PRESETS, QUERY_BANK, QUERY_INFO,
+                       QUERY_PARAMS, QUERY_SETUP, REPORT_LEN, SETUP, SETUP_PRESET, Cab, Param,
+                       parse_cab)
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
+SPEAKER, MIC = PARAM_BY_NAME["SIMUHP_SPEAKER"].index, PARAM_BY_NAME["SIMUHP_MIC"].index
 READ_TIMEOUT_MS = 100
 TIMEOUT = 2.0
 
@@ -127,6 +129,16 @@ class Torpedo:
         self._read_all(QUERY_SETUP, MSG_SETUP, len(SETUP))
         return dict(self.setup)
 
+    def read_cabs(self, bank: int = 0) -> list[Cab]:
+        """Cab bank listing. Bank 0 holds the cabs SIMUHP_SPEAKER selects."""
+        end = bytes([MSG_QUERY, BANK_END, bank])
+        msgs = self._exchange(MSG_QUERY, QUERY_BANK, bank, until=lambda p: p[:3] == end)
+        records: dict[int, dict[int, bytes]] = {}
+        for m in msgs:
+            if m[0] == MSG_CAB and m[1] == bank:
+                records.setdefault(m[2], {})[m[3]] = m
+        return [parse_cab(i, records[i]) for i in sorted(records)]
+
     # --- writes --------------------------------------------------------------
 
     def set_param(self, param: Param, value: int) -> dict[int, int]:
@@ -150,6 +162,22 @@ class Torpedo:
             raise IgnoredWrite(f"the Torpedo ignored {param.name}={value} "
                                f"(PRESET_MODE={mode})") from None
         return {p[1]: p[2] for p in msgs if p[0] == MSG_PARAM}
+
+    def select_cab(self, index: int, cabs: list[Cab] | None = None) -> dict[int, int]:
+        """Select a cab from bank 0. Like Torpedo Remote, also move SIMUHP_MIC so
+        the same mic stays selected when the new cab has it (mic B is left alone,
+        as Remote does)."""
+        cabs = cabs if cabs is not None else self.read_cabs()
+        if not 0 <= index < len(cabs):
+            raise ValueError(f"cab must be 0..{len(cabs) - 1}")
+        if not self.params:
+            self.read_params()
+        old, mic = self.params[SPEAKER], self.params[MIC]
+        mic_name = cabs[old].mics[mic] if old < len(cabs) and mic < len(cabs[old].mics) else ""
+        changes = self.set_param(PARAMS[SPEAKER], index)
+        if mic_name and mic_name in cabs[index].mics:
+            changes |= self.set_param(PARAMS[MIC], cabs[index].mics.index(mic_name))
+        return changes
 
     @property
     def preset(self) -> int:

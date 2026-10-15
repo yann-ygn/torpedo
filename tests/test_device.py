@@ -71,6 +71,27 @@ def test_unexpectedly_ignored_write_is_reported(torpedo, monkeypatch):
         torpedo.set_param(find_param("simuamp_gain"), 25)
 
 
+def test_read_cabs(torpedo):
+    cabs = torpedo.read_cabs()
+    assert len(cabs) == 32 and [c.index for c in cabs] == list(range(32))
+    lux = cabs[0x10]
+    assert (lux.name, lux.maker) == ("LuxTweeDe", "Hop Pole Studios")
+    assert lux.mics[5] == "Dyn 7b" and len(lux.mics) == 8
+    assert torpedo.read_cabs(2) == []
+
+
+def test_select_cab_keeps_mic_like_remote(torpedo):
+    """Captured from Torpedo Remote: DarkPrinz with mic 3 (Dyn 421) -> Brit 65C sets mic 4."""
+    cabs = torpedo.read_cabs()
+    torpedo.select_cab(0x12, cabs)  # A001 has Dyn 7b (mic 5), which DarkPrinz lacks
+    assert torpedo.params[0x0D] == 5
+    torpedo.set_param(find_param("simuhp_mic"), 3)
+    assert torpedo.select_cab(1, cabs) == {0x08: 1, 0x0D: 4}
+    assert torpedo.select_cab(2, cabs) == {0x08: 2}  # same mic list: mic untouched
+    with pytest.raises(ValueError):
+        torpedo.select_cab(32, cabs)
+
+
 def test_select_preset(torpedo):
     changes = torpedo.select_preset(1)
     assert changes == {0x13: 30, 0x17: 30, 0x1A: 3, 0x20: 30}
@@ -78,7 +99,7 @@ def test_select_preset(torpedo):
 
 
 @pytest.mark.parametrize("name, value", [
-    ("arcade_contour", 41), ("arcade_contour", -1), ("simuhp_speaker", 3), ("eq_l_gain0", 128),
+    ("arcade_contour", 41), ("arcade_contour", -1), ("simuhp_folder_ir_0", 1), ("simuhp_speaker", 32), ("eq_l_gain0", 128),
 ])
 def test_validation_sends_nothing(torpedo, name, value):
     torpedo.read_params()

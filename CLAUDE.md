@@ -17,7 +17,8 @@ reference implementation.
   raises on unobserved commands), `cli.py` (info/params/get/set/preset/discard/setup).
   Verified on the unit. No TUI yet.
 - Ranges come from a min/max sweep capture (`captures/2026-10-15-ranges.log`,
-  `tools/ranges.py`). Cab/IR selection params are read-only. That capture also
+  `tools/ranges.py`). Cab selection from bank 0 works (`cabs`/`cab`, capture
+  `2026-10-15-cabs.log`); IR banks 1–4 (FOLDER_IR/WAVE) are read-only. The ranges capture also
   showed setup writes (`0c 00` level, `0c 01` mute) and a cab preview upload
   (`6e`/`6f`/`70`), not implemented yet.
 - Arcade mode only accepts writes to `ARCADE_EDITABLE` (protocol.py, probed

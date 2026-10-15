@@ -11,14 +11,20 @@ uv run torpedo set arcade_contour=22 reverb_room=3
 uv run torpedo discard                       # drop unsaved edits (reloads the preset)
 uv run torpedo preset 2                      # select A002 (or `preset A002`)
 uv run torpedo setup                         # global setup values (read-only)
+uv run torpedo cabs                          # cab bank 0, * = current (--bank 1..4: IR banks)
+uv run torpedo cab                           # current cab and its mics
+uv run torpedo cab darkprinz                 # select by index, name or unique part of it
 uv run torpedo --fake params                 # simulated device, nothing is sent
 ```
 
 `set` edits the current preset in the unit's memory only; nothing is saved
 (saving isn't implemented yet). Every value is range-checked before anything
-is sent. Ranges are provisional except ARCADE_CONTOUR (see
-`src/torpedo/protocol.py`), and parameters whose meaning isn't mapped yet
-(cab/IR selection) are read-only.
+is sent, and in arcade mode the parameters the Torpedo would ignore are
+refused (see `src/torpedo/protocol.py`). IR selection from banks 1–4 isn't
+mapped yet, so those parameters are read-only.
+
+`cab` keeps the same mic selected when the new cab has it, like Torpedo
+Remote; otherwise the mic index is left as is (each cab has its own 8 mics).
 
 ## Linux
 

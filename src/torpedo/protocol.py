@@ -19,7 +19,18 @@ MSG_POLL = 0x7E  # host: send me the next queued message
 QUERY_INFO = 0x01
 QUERY_PARAMS = 0x0A
 QUERY_SETUP = 0x0B
+QUERY_BANK = 0x08  # 04 08 bank: cab records (MSG_CAB), then 04 10 bank <name>
+BANK_END = 0x10
 HEARTBEAT = bytes([MSG_QUERY, 0x02])
+
+# Cab bank listing: one record = up to 4 `06 bank idx part ...` reports.
+#   part 0: 01 08 d8 <name> from byte 7
+#   part 1: 24 bytes (unknown), then mic names 0..2   (12-byte slots from byte 28)
+#   part 2: mic names 3..7                            (12-byte slots from byte 4)
+#   part 3: <maker> in bytes 4..35, then unknown
+# Bank 0 holds the cabs SIMUHP_SPEAKER selects; SIMUHP_MIC indexes the cab's mic list.
+MSG_CAB = 0x06
+MIC_SLOT = 12
 
 SETUP_PRESET = 0x03
 PRESET_MODIFIED = 0x80  # bit 7 of SETUP_PRESET: current preset has unsaved edits
@@ -58,12 +69,12 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("SIMUAMP_CHARACTER", 0, 1),
     ("SIMUHP", 0, 1),
     ("SIMUHP_PREVIEW", *RO),  # 2 = play a cab uploaded with 6e/6f/70 (Remote library preview)
-    ("SIMUHP_SPEAKER", *RO),  # cab selection: index space not mapped yet
+    ("SIMUHP_SPEAKER", 0, 31),  # index into cab bank 0 (32 cabs on this unit)
     ("SIMUHP_WAVE0", *RO),
     ("SIMUHP_WAVE1", *RO),
     ("SIMUHP_FOLDER_IR_0", *RO),
     ("SIMUHP_FOLDER_IR_1", *RO),
-    ("SIMUHP_MIC", 0, 7),
+    ("SIMUHP_MIC", 0, 7),  # index into the cab's mic list
     ("SIMUHP_DISTANCE", *KNOB),
     ("SIMUHP_CENTER", *KNOB),
     ("SIMUHP_POSITION", 0, 1),  # front/back
@@ -116,7 +127,7 @@ ARCADE, SIMULATION = 1, 0  # PRESET_MODE values
 # just stored, nothing is recomputed).
 ARCADE_EDITABLE = frozenset(PARAM_BY_NAME[n].index for n in """
     ARCADE_GUITARBASS ARCADE_POWERAMP ARCADE_DISTANCE ARCADE_TONE ARCADE_CONTOUR ARCADE_LEVEL
-    SIMUHP_MIC REVERB_ROOM EQ_L_FREQ_F0 EQ_L_FREQ_F1 EQ_L_FREQ_F2 EQ_L_FREQ_F3 EQ_L_FREQ_F4
+    SIMUHP_SPEAKER SIMUHP_MIC REVERB_ROOM EQ_L_FREQ_F0 EQ_L_FREQ_F1 EQ_L_FREQ_F2 EQ_L_FREQ_F3 EQ_L_FREQ_F4
     PRESET_MODE""".split())
 
 # Order = LiveCABSetupIndexDictionary. Read-only: only preset selection
@@ -125,6 +136,26 @@ SETUP = """SETUP_LEVEL SETUP_MUTE SETUP_ON_OFF SETUP_PRESET SETUP_PRESET_SOURCE
 SETUP_FLAG_PRESET_MODIF SETUP_FOOTSWITCH_A SETUP_FOOTSWITCH_HOLD_A SETUP_FOOTSWITCH_B
 SETUP_FOOTSWITCH_HOLD_B SETUP_SPDIF_FREQ SETUP_MIDI_CC SETUP_MIDI_PC SETUP_MIDI_CHANNEL
 SETUP_SPDIF_MODE DUMMY_CCIR_PRESENCE DUMMY_AUX_LEVEL DUMMY_AUX_MUTE""".split()
+
+
+@dataclass
+class Cab:
+    index: int
+    name: str
+    maker: str
+    mics: list[str]  # SIMUHP_MIC indexes this list; "" = empty slot
+
+
+def _str(b: bytes) -> str:
+    return b.split(bytes(1))[0].decode("latin-1")
+
+
+def parse_cab(index: int, parts: dict[int, bytes]) -> Cab:
+    """Build a Cab from its `06 bank idx part` reports (ML/user IRs only have parts 0-1)."""
+    p0, p1, p2, p3 = (parts.get(i, bytes(REPORT_LEN)) for i in range(4))
+    slots = p1[28:28 + 3 * MIC_SLOT] + p2[4:4 + 5 * MIC_SLOT]
+    mics = [_str(slots[i:i + MIC_SLOT]) for i in range(0, len(slots), MIC_SLOT)]
+    return Cab(index, _str(p0[7:]), _str(p3[4:36]), mics)
 
 
 def find_param(key: str) -> Param:

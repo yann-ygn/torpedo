@@ -1,7 +1,8 @@
 import argparse
 import sys
 
-from .device import Torpedo
+from .device import MIC, SPEAKER, Torpedo
+from .protocol import Cab
 from .protocol import (ARCADE, ARCADE_EDITABLE, PARAMS, PRESET_MODE, PRESET_MODIFIED, PRESETS,
                        SETUP, find_param, preset_name)
 
@@ -96,6 +97,41 @@ def cmd_setup(t: Torpedo, args):
         print(f"{i:02x} {name:<24} {'?' if v is None else f'{v:#04x}'}")
 
 
+def find_cab(cabs: list[Cab], key: str) -> Cab:
+    """By index (`18`, `0x12`), name (case-insensitive) or a unique part of the name."""
+    try:
+        i = int(key, 0)
+    except ValueError:
+        k = key.lower()
+        found = ([c for c in cabs if c.name.lower() == k]
+                 or [c for c in cabs if k in c.name.lower()])
+        if len(found) == 1:
+            return found[0]
+        raise ValueError(f"cab '{key}' " + ("is ambiguous: " + ", ".join(c.name for c in found)
+                                            if found else "not found (see `torpedo cabs`)"))
+    if not 0 <= i < len(cabs):
+        raise ValueError(f"cab must be 0..{len(cabs) - 1}")
+    return cabs[i]
+
+
+def cmd_cabs(t: Torpedo, args):
+    current = t.read_params()[SPEAKER] if args.bank == 0 else None
+    for c in t.read_cabs(args.bank):
+        mark = "*" if c.index == current else " "
+        print(f"{mark} {c.index:3d} {c.name:<28} {c.maker}")
+
+
+def cmd_cab(t: Torpedo, args):
+    cabs = t.read_cabs()
+    before = t.read_params()
+    if args.cab is not None:
+        print_changes(before, t.select_cab(find_cab(cabs, args.cab).index, cabs))
+    cab = cabs[t.params[SPEAKER]]
+    print(f"cab {cab.index}: {cab.name} ({cab.maker})")
+    for i, m in enumerate(cab.mics):
+        print(f"  {'*' if i == t.params[MIC] else ' '} mic {i}: {m or '-'}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="torpedo", description="Control a Two notes Torpedo Live over USB")
     ap.add_argument("--fake", action="store_true", help="simulated device, nothing is sent to hardware")
@@ -113,6 +149,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_preset)
     sub.add_parser("discard", help="drop unsaved edits (reload the current preset)").set_defaults(func=cmd_discard)
     sub.add_parser("setup", help="global setup values (read-only)").set_defaults(func=cmd_setup)
+    p = sub.add_parser("cabs", help="list a cab bank (0 = the cabs `cab` selects)")
+    p.add_argument("--bank", type=int, choices=range(5), default=0)
+    p.set_defaults(func=cmd_cabs)
+    p = sub.add_parser("cab", help="show or select the cab (keeps the same mic when it can)")
+    p.add_argument("cab", nargs="?", metavar="CAB", help="index, name or part of the name")
+    p.set_defaults(func=cmd_cab)
     return ap
 
 
