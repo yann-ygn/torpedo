@@ -1,8 +1,9 @@
 import argparse
 import sys
 
+from . import backup
 from .device import MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
-from .protocol import (ARCADE, ARCADE_EDITABLE, IR, MODE_NAMES, PARAM_BY_NAME, PARAMS,
+from .protocol import (ARCADE, ARCADE_EDITABLE, EMPTY_PRESET, IR, MODE_NAMES, PARAM_BY_NAME, PARAMS,
                        PRESET_MODE, PRESETS, SETUP, SETUP_OPTIONS, Cab, find_param,
                        preset_name)
 
@@ -215,6 +216,52 @@ def cmd_cab(t: Torpedo, args):
     print("  mics: " + ", ".join(f"{i} {m}" for i, m in enumerate(cab.mics) if m))
 
 
+def show_progress(what: str):
+    def progress(done: int, total: int):
+        print(f"\r{what} {done}/{total}", end="" if done < total else "\n", flush=True)
+    return progress
+
+
+def parse_preset_list(s: str) -> set[int]:
+    """`A001,A076` or `1,76` -> {0, 75}."""
+    return {parse_preset(x) for x in s.split(",") if x}
+
+
+def cmd_backup(t: Torpedo, args):
+    state = backup.read_state(t, show_progress("reading presets"))
+    backup.save_file(state, args.file)
+    used = sum(p["name"] != EMPTY_PRESET for p in state["presets"])
+    print(f"saved {used} presets (+{len(state['presets']) - used} empty slots) and the "
+          f"global settings to {args.file}")
+
+
+def cmd_restore(t: Torpedo, args):
+    saved = backup.load_file(args.file)
+    if saved["serial"] != t.info().serial:
+        print(f"note: backup from unit {saved['serial']}: cab/IR numbers may not match this one")
+    current = backup.read_state(t, show_progress("reading the unit"))
+    plan = backup.plan_restore(saved, current, args.presets, setup=not args.no_setup)
+    for name, v in plan.setup.items():
+        option = SETUP_OPTIONS[name]
+        print(f"  setup {name}: {option.decode(current['setup'][name])} -> {option.decode(v)}")
+    by_index = {p["index"]: p for p in current["presets"]}
+    for entry in plan.presets:
+        now = by_index[entry["index"]]
+        changed = sum(entry["params"][k] != v for k, v in now["params"].items())
+        print(f"  {entry['label']}: \"{now['name']}\" -> \"{entry['name']}\""
+              f" ({changed} parameters differ)")
+    for line in plan.skipped:
+        print(f"  skipped {line}")
+    if not plan:
+        print("nothing to restore: the unit matches the backup")
+    elif not args.apply:
+        print(f"dry run: {len(plan.presets)} presets would be stored (flash writes, ~3 s each); "
+              "add --apply to do it")
+    else:
+        backup.apply_restore(t, plan, show_progress("storing presets"))
+        print("restored")
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="torpedo", description="Control a Two notes Torpedo Live over USB")
     ap.add_argument("--fake", action="store_true", help="simulated device, nothing is sent to hardware")
@@ -253,6 +300,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--name", help="preset name (A-Z, 0-9, space; default: keep the current one)")
     p.add_argument("--overwrite", action="store_true", help="allow replacing a non-empty preset")
     p.set_defaults(func=cmd_save)
+    p = sub.add_parser("backup", help="save all presets and global settings to a JSON file (~30 s)")
+    p.add_argument("file")
+    p.set_defaults(func=cmd_backup)
+    p = sub.add_parser("restore", help="show (or --apply) what restoring a backup would change")
+    p.add_argument("file")
+    p.add_argument("--presets", type=parse_preset_list, metavar="A001,A076",
+                   help="only these presets (default: all)")
+    p.add_argument("--no-setup", action="store_true", help="leave the global settings alone")
+    p.add_argument("--apply", action="store_true", help="really write (stores presets to flash)")
+    p.set_defaults(func=cmd_restore)
     p = sub.add_parser("rename", help="rename the current preset (must have no unsaved edits)")
     p.add_argument("name")
     p.set_defaults(func=cmd_rename)

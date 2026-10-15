@@ -14,6 +14,9 @@ uv run torpedo presets                       # preset names (--all: also the emp
 uv run torpedo save --name "my crunch"       # store into the first empty USER slot
 uv run torpedo save A080 --overwrite         # replace a preset (refused without --overwrite)
 uv run torpedo rename "my crunch 2"          # rename the current preset (no unsaved edits)
+uv run torpedo backup backup/today.json      # all presets + global settings (~20 s)
+uv run torpedo restore backup/today.json     # dry run: what differs (--apply writes it)
+uv run torpedo restore backup/today.json --presets A076,A080 --no-setup --apply
 uv run torpedo setup                         # global settings (--raw: every setup value)
 uv run torpedo setup midi_channel=1 output=wet/wet spdif_freq=96 level=85 mute=off
 uv run torpedo cabs                          # cab bank 0, * = current (--bank 1..4: IR banks)
@@ -40,6 +43,16 @@ The Torpedo has one cab and two mics (A and B) picked from that cab's own 8
 mics. `cab` keeps each mic on the same mic when the new cab has it, like
 Torpedo Remote; otherwise the mic index is left as is. Mic B only follows in
 simulation mode, since arcade mode ignores mic B.
+
+## Backup
+
+`backup` selects each preset in turn to read it (the unit has no other way
+to send a stored preset), then goes back to the current one. `restore`
+compares the file with the unit and only stores the presets that differ, so
+a restore that changes one preset writes one. Cab and IR data aren't
+included, and an empty "USER" slot in the backup can't empty a slot that is
+used now (no erase command is known). Both refuse to run while the current
+preset has unsaved edits.
 
 ## Linux
 

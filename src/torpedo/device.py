@@ -240,8 +240,9 @@ class Torpedo:
         itself counts as overwriting too)."""
         if not 0 <= n < PRESETS:
             raise ValueError(f"preset must be 0..{PRESETS - 1}")
-        names = names if names is not None else self.read_names()
-        if not names[n].empty and not overwrite:
+        if names is None and (not overwrite or name is None):
+            names = self.read_names()
+        if not overwrite and not names[n].empty:
             raise ValueError(f"{preset_name(n)} holds \"{names[n].name}\": "
                              "pass overwrite=True to replace it")
         name = check_name(name) if name is not None else names[-1].name

@@ -31,7 +31,11 @@ reference implementation.
   non-empty slots without `--overwrite`. A076 "TESTCAP" is the user's scratch slot.
 - Global settings (level, mute, MIDI CC/PC/channel, S/PDIF output and rate)
   are decoded (`setup NAME=VALUE`, capture `2026-10-15-setup.log`).
-- Still to capture: user IR upload, footswitch settings (setup 06–09).
+- `backup`/`restore` (src/torpedo/backup.py): JSON of all 128 presets +
+  global settings, read by selecting each preset; restore stores only the
+  presets that differ. Backups go in `backup/` and are committed (like klim).
+- Still to capture: user IR upload. Footswitch settings (setup 06–09) aren't
+  exposed by Remote.
 
 ## Safety
 
