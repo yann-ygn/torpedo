@@ -23,8 +23,10 @@ is sent, and in arcade mode the parameters the Torpedo would ignore are
 refused (see `src/torpedo/protocol.py`). IR selection from banks 1–4 isn't
 mapped yet, so those parameters are read-only.
 
-`cab` keeps the same mic selected when the new cab has it, like Torpedo
-Remote; otherwise the mic index is left as is (each cab has its own 8 mics).
+The Torpedo has one cab and two mics (A and B) picked from that cab's own 8
+mics. `cab` keeps each mic on the same mic when the new cab has it, like
+Torpedo Remote; otherwise the mic index is left as is. Mic B only follows in
+simulation mode, since arcade mode ignores mic B.
 
 ## Linux
 

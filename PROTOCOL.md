@@ -62,7 +62,8 @@ polling. Without polling, the reply to a write may also be a bare `05`
 | 2 | mic names 3–7 (12-byte slots from byte 4) |
 | 3 | maker name in bytes 4–35, then unknown (checksum?) |
 
-Each cab has its own 8 mics: SIMUHP_MIC is an index into the selected cab's
+One cab, two mics (A and B, each with its own mute): SIMUHP_MIC and
+SIMUHP_MIC_2 are both indexes into the selected cab's 8-mic
 list ("Knightfall", mic 0 of the Two notes cabs, is a real mic name, as in Remote's UI).
 
 ### Cab selection (2026-10-15-cabs capture)
@@ -72,7 +73,9 @@ too. When selecting a cab, Torpedo Remote also writes SIMUHP_MIC so the same
 mic name stays selected (DarkPrinz mic 3 "Dyn 421" → Brit 65C mic 4), and
 writes nothing when the index is unchanged. When the new cab lacks the mic it
 picked something else (LuxTweeDe mic 5 "Dyn 7b" → DarkPrinz mic 3), rule
-unknown. Mic B was never rewritten. Selecting from banks 1–4
+unknown. Mic B was never rewritten (it was muted, and arcade mode ignores
+SIMUHP_MIC_2 anyway); `torpedo cab` keeps its name too in simulation mode.
+Selecting from banks 1–4
 (SIMUHP_FOLDER_IR_*, SIMUHP_WAVE*) is not captured yet.
 | `04 15 01` | `6e …` ×2, `6f …` ×~45, `70 …` | waveform of the loaded IR (for the display); `6f` = data chunks, `70` = end |
 

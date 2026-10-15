@@ -19,7 +19,8 @@ from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, HEARTBEAT, MSG_CAB, MS
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
-SPEAKER, MIC = PARAM_BY_NAME["SIMUHP_SPEAKER"].index, PARAM_BY_NAME["SIMUHP_MIC"].index
+SPEAKER, MIC, MIC_2, MUTE, MUTE_2 = (PARAM_BY_NAME[n].index for n in (
+    "SIMUHP_SPEAKER", "SIMUHP_MIC", "SIMUHP_MIC_2", "SIMUHP_MUTE", "SIMUHP_MUTE_2"))
 READ_TIMEOUT_MS = 100
 TIMEOUT = 2.0
 
@@ -164,19 +165,22 @@ class Torpedo:
         return {p[1]: p[2] for p in msgs if p[0] == MSG_PARAM}
 
     def select_cab(self, index: int, cabs: list[Cab] | None = None) -> dict[int, int]:
-        """Select a cab from bank 0. Like Torpedo Remote, also move SIMUHP_MIC so
-        the same mic stays selected when the new cab has it (mic B is left alone,
-        as Remote does)."""
+        """Select a cab from bank 0. Both mics (A and B) use the cab's mic list:
+        like Torpedo Remote, move each one so the same mic stays selected when
+        the new cab has it. Mic B only in simulation mode (arcade ignores it)."""
         cabs = cabs if cabs is not None else self.read_cabs()
         if not 0 <= index < len(cabs):
             raise ValueError(f"cab must be 0..{len(cabs) - 1}")
         if not self.params:
             self.read_params()
-        old, mic = self.params[SPEAKER], self.params[MIC]
-        mic_name = cabs[old].mics[mic] if old < len(cabs) and mic < len(cabs[old].mics) else ""
+        old = self.params[SPEAKER]
+        mics = [m for m in (MIC, MIC_2)
+                if self.params[PRESET_MODE] != ARCADE or m in ARCADE_EDITABLE]
+        names = {m: cabs[old].mics[self.params[m]] if old < len(cabs) else "" for m in mics}
         changes = self.set_param(PARAMS[SPEAKER], index)
-        if mic_name and mic_name in cabs[index].mics:
-            changes |= self.set_param(PARAMS[MIC], cabs[index].mics.index(mic_name))
+        for m, name in names.items():
+            if name and name in cabs[index].mics:
+                changes |= self.set_param(PARAMS[m], cabs[index].mics.index(name))
         return changes
 
     @property

@@ -1,7 +1,7 @@
 import argparse
 import sys
 
-from .device import MIC, SPEAKER, Torpedo
+from .device import MIC, MIC_2, MUTE, MUTE_2, SPEAKER, Torpedo
 from .protocol import Cab
 from .protocol import (ARCADE, ARCADE_EDITABLE, PARAMS, PRESET_MODE, PRESET_MODIFIED, PRESETS,
                        SETUP, find_param, preset_name)
@@ -127,9 +127,12 @@ def cmd_cab(t: Torpedo, args):
     if args.cab is not None:
         print_changes(before, t.select_cab(find_cab(cabs, args.cab).index, cabs))
     cab = cabs[t.params[SPEAKER]]
+    muted = {MIC: t.params[MUTE], MIC_2: t.params[MUTE_2]}
     print(f"cab {cab.index}: {cab.name} ({cab.maker})")
-    for i, m in enumerate(cab.mics):
-        print(f"  {'*' if i == t.params[MIC] else ' '} mic {i}: {m or '-'}")
+    for label, m in (("A", MIC), ("B", MIC_2)):
+        print(f"  mic {label}: {cab.mics[t.params[m]] or '-'} ({t.params[m]})"
+              + ("  muted" if muted[m] else ""))
+    print("  mics: " + ", ".join(f"{i} {m}" for i, m in enumerate(cab.mics) if m))
 
 
 def build_parser() -> argparse.ArgumentParser:

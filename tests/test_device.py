@@ -92,6 +92,16 @@ def test_select_cab_keeps_mic_like_remote(torpedo):
         torpedo.select_cab(32, cabs)
 
 
+def test_select_cab_moves_mic_b_in_simulation_mode(torpedo):
+    """1 cab, 2 mics: mic B indexes the same mic list. Arcade ignores mic B writes."""
+    cabs = torpedo.read_cabs()
+    torpedo.select_cab(1, cabs)  # A001 arcade, mic B = 0 "Cnd Gem II" (absent anyway)
+    torpedo.set_param(find_param("preset_mode"), 0)
+    torpedo.set_param(find_param("simuhp_mic_2"), 3)  # Rbn 160 on Brit 65C
+    torpedo.set_param(find_param("simuhp_mic"), 4)  # Dyn 421
+    assert torpedo.select_cab(0x12, cabs) == {0x08: 0x12, 0x0D: 3, 0x26: 2}
+
+
 def test_select_preset(torpedo):
     changes = torpedo.select_preset(1)
     assert changes == {0x13: 30, 0x17: 30, 0x1A: 3, 0x20: 30}
