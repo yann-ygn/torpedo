@@ -157,12 +157,57 @@ ARCADE_EDITABLE = frozenset(PARAM_BY_NAME[n].index for n in """
     SIMUHP_SPEAKER SIMUHP_MIC REVERB_ROOM EQ_L_FREQ_F0 EQ_L_FREQ_F1 EQ_L_FREQ_F2 EQ_L_FREQ_F3 EQ_L_FREQ_F4
     PRESET_MODE""".split())
 
-# Order = LiveCABSetupIndexDictionary. Read-only: only preset selection
-# (0c 03 n) has been observed as a write.
+# Order = LiveCABSetupIndexDictionary. Written with `0c idx val` (echoed): the
+# SetupOption entries below (captures 2026-10-15-ranges and -setup) and
+# preset selection (0c 03 n). Footswitch settings haven't been captured.
 SETUP = """SETUP_LEVEL SETUP_MUTE SETUP_ON_OFF SETUP_PRESET SETUP_PRESET_SOURCE
 SETUP_FLAG_PRESET_MODIF SETUP_FOOTSWITCH_A SETUP_FOOTSWITCH_HOLD_A SETUP_FOOTSWITCH_B
 SETUP_FOOTSWITCH_HOLD_B SETUP_SPDIF_FREQ SETUP_MIDI_CC SETUP_MIDI_PC SETUP_MIDI_CHANNEL
 SETUP_SPDIF_MODE DUMMY_CCIR_PRESENCE DUMMY_AUX_LEVEL DUMMY_AUX_MUTE""".split()
+
+
+@dataclass(frozen=True)
+class SetupOption:
+    """A global setting as Torpedo Remote's Setup Manager shows it."""
+    name: str
+    index: int
+    choices: tuple[str, ...] = ()  # wire value = position; empty: a number lo..hi
+    lo: int = 0
+    hi: int = 0
+
+    @property
+    def wire_values(self) -> range:
+        return range(len(self.choices)) if self.choices else range(self.lo, self.hi + 1)
+
+    def encode(self, text: str) -> int:
+        if self.choices:
+            if text.lower() not in self.choices:
+                raise ValueError(f"{self.name} must be one of: {', '.join(self.choices)}")
+            return self.choices.index(text.lower())
+        try:
+            v = int(text, 0)
+        except ValueError:
+            v = None
+        if v is None or not self.lo <= v <= self.hi:
+            raise ValueError(f"{self.name} must be {self.lo}..{self.hi}")
+        return v
+
+    def decode(self, v: int) -> str:
+        if v not in self.wire_values:
+            return f"? ({v:#04x})"
+        return self.choices[v] if self.choices else str(v)
+
+
+OFF_ON = ("off", "on")
+SETUP_OPTIONS = {o.name: o for o in [
+    SetupOption("level", 0x00, lo=0, hi=107),  # global output level, dB mapping unknown
+    SetupOption("mute", 0x01, OFF_ON),
+    SetupOption("spdif_freq", 0x0A, ("48", "96")),  # kHz
+    SetupOption("midi_cc", 0x0B, OFF_ON),
+    SetupOption("midi_pc", 0x0C, OFF_ON),
+    SetupOption("midi_channel", 0x0D, (*(str(c) for c in range(1, 17)), "all")),  # 0..15, 0x10
+    SetupOption("output", 0x0E, ("dry/dry", "dry/wet", "wet/dry", "wet/wet")),  # S/PDIF L/R
+]}
 
 
 @dataclass

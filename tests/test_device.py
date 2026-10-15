@@ -2,7 +2,7 @@ import pytest
 
 from torpedo.device import IgnoredWrite, Torpedo
 from torpedo.fake import A001, FakeHid
-from torpedo.protocol import EDIT_BUFFER, MSG_POLL, PARAMS, SETUP, find_param
+from torpedo.protocol import EDIT_BUFFER, MSG_POLL, PARAMS, SETUP, SETUP_OPTIONS, find_param
 
 CONTOUR = find_param("arcade_contour")
 PARAMS_ALL = frozenset(range(len(PARAMS)))
@@ -151,6 +151,22 @@ def test_save_refuses_to_overwrite(torpedo):
     assert torpedo.dev.stores == [], "nothing written"
     torpedo.save(3, overwrite=True)
     assert torpedo.dev.stores == [3] and torpedo.read_names()[3].name == "BDELUXE 1 RBN"
+
+
+def test_setup_options(torpedo):
+    opts = SETUP_OPTIONS
+    assert opts["midi_channel"].encode("16") == 0x0F and opts["midi_channel"].decode(0) == "1"
+    assert opts["midi_channel"].encode("ALL") == 0x10 and opts["midi_channel"].decode(0x10) == "all"
+    assert opts["midi_channel"].decode(0x11).startswith("?")
+    assert opts["output"].encode("Wet/Wet") == 3 and opts["spdif_freq"].decode(1) == "96"
+    for name, bad in (("midi_channel", "0"), ("midi_channel", "17"), ("output", "wet"),
+                      ("level", "108"), ("mute", "yes")):
+        with pytest.raises(ValueError):
+            opts[name].encode(bad)
+    assert torpedo.set_setup(opts["output"], 1) and torpedo.read_setup()[0x0E] == 1
+    assert not torpedo.set_setup(opts["output"], 1), "no-op"
+    with pytest.raises(ValueError):
+        torpedo.set_setup(opts["midi_channel"], 0x11)
 
 
 def test_select_preset(torpedo):

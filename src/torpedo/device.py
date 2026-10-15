@@ -16,7 +16,8 @@ from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, FOLDER_BA
                        MSG_QUERY, MSG_SETUP, NAMES_ALL, PARAM_BY_NAME, PARAMS, PRESET_MODE,
                        PRESETS, QUERY_BANK, QUERY_INFO, QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP,
                        QUERY_STORE, REPORT_LEN, SETUP, SETUP_PRESET, SETUP_PRESET_SOURCE, Cab,
-                       Param, PresetName, check_name, parse_cab, parse_name, preset_name)
+                       Param, PresetName, SETUP_OPTIONS, SetupOption, check_name, parse_cab,
+                       parse_name, preset_name)
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
@@ -269,3 +270,18 @@ class Torpedo:
     def discard(self) -> dict[int, int]:
         """Drop unsaved edits by reloading the preset they came from."""
         return self.select_preset(self.source) if self.edited else {}
+
+    def set_setup(self, option: SetupOption, value: int) -> bool:
+        """Change a global setting (stored by the unit, not part of a preset).
+        Returns False if it already had that value."""
+        if option.name not in SETUP_OPTIONS or SETUP_OPTIONS[option.name] is not option:
+            raise ValueError(f"unknown setup option {option.name}")
+        if value not in option.wire_values:
+            raise ValueError(f"{option.name}: bad wire value {value}")
+        if option.index not in self.setup:
+            self.read_setup()
+        if self.setup[option.index] == value:
+            return False
+        echo = bytes([MSG_SETUP, option.index, value])
+        self._exchange(MSG_SETUP, option.index, value, until=lambda p: p[:3] == echo)
+        return True

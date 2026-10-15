@@ -14,7 +14,8 @@ uv run torpedo presets                       # preset names (--all: also the emp
 uv run torpedo save --name "my crunch"       # store into the first empty USER slot
 uv run torpedo save A080 --overwrite         # replace a preset (refused without --overwrite)
 uv run torpedo rename "my crunch 2"          # rename the current preset (no unsaved edits)
-uv run torpedo setup                         # global setup values (read-only)
+uv run torpedo setup                         # global settings (--raw: every setup value)
+uv run torpedo setup midi_channel=1 output=wet/wet spdif_freq=96 level=85 mute=off
 uv run torpedo cabs                          # cab bank 0, * = current (--bank 1..4: IR banks)
 uv run torpedo cab                           # current cab and its mics
 uv run torpedo cab darkprinz                 # select by index, name or unique part of it

@@ -12,7 +12,7 @@ from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, MIC_SLOT,
                        MSG_EMPTY, MSG_INFO, MSG_NAME, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP,
                        NAMES_ALL, NAMES_EDIT_BUFFER, PRESET_MODE, PRESETS, QUERY_BANK, QUERY_INFO,
                        QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP, QUERY_STORE, REPORT_LEN,
-                       SETUP_PRESET, SETUP_PRESET_SOURCE)
+                       SETUP_OPTIONS, SETUP_PRESET, SETUP_PRESET_SOURCE)
 
 # Read from the real unit (preset A001 and setup, 2026-10-15)
 A001 = [0, 5, 0, 127, 127, 1, 1, 0, 16, 0, 0, 0, 0, 5, 0, 17, 1, 1, 0, 21, 20, 20, 20, 21, 87,
@@ -33,6 +33,7 @@ CABS = {0: ("Blonde 63", "Two Notes Audio Engineering", TWO_NOTES_MICS),
                                                  "Dyn 57", "Dyn 7b", "Dyn Bass112", "Dyn i5"]),
         0x12: ("DarkPrinz", "Black Bear Studio", ["Cnd 840", "Cnd BLX414", "Rbn 160", "Dyn 421",
                                                   "Dyn 57", "Dyn 906", "Dyn Bass20", "Dyn TG201"])}
+SETUP_WRITABLE = {o.index for o in SETUP_OPTIONS.values()}
 PRESET_NAMES = (["BDELUXE 1 RBN", "BDELUXE 1 DYN421"] + [f"FACTORY {i}" for i in range(2, 75)]
                 + ["USER"] * 53)  # A076..A128 are empty user slots, as on the unit
 BANK0_SIZE = 32
@@ -114,6 +115,10 @@ class FakeHid:
             self._set_param(idx, val)
         elif cmd == MSG_SETUP and idx == SETUP_PRESET and val < PRESETS:
             self._select(val)
+        elif cmd == MSG_SETUP and idx in SETUP_WRITABLE:
+            if self.setup[idx] != val:
+                self.setup[idx] = val
+                self.queue.append(report(MSG_SETUP, idx, val))
         elif cmd == MSG_QUERY and idx == QUERY_NAMES and val in (NAMES_ALL, NAMES_EDIT_BUFFER):
             for i in (range(PRESETS) if val == NAMES_ALL else ()):
                 self.queue.append(self._name_report(i))

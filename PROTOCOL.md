@@ -231,17 +231,21 @@ are plain XML with the same parameters (`TOP_*` names).
 ## Setup (`0c idx val`)
 
 Order is `LiveCABSetupIndexDictionary`. Values are from the first read.
+Writes are `0c idx val`, echoed (captures 2026-10-15-ranges for level/mute,
+2026-10-15-setup for Remote's Setup Manager window).
 
-| idx | name | value |
-|---|---|---|
-| 00 | SETUP_LEVEL | 0x55 |
-| 01 | SETUP_MUTE | 0 |
-| 02 | SETUP_ON_OFF | 1 |
-| 03 | SETUP_PRESET | 0x7E (current preset, 0x80 = edit buffer; select with `0c 03 n`) |
-| 04 | SETUP_PRESET_SOURCE | 0x70 (preset the edit buffer came from) |
-| 05 | SETUP_FLAG_PRESET_MODIF | 1 |
-| 06–09 | SETUP_FOOTSWITCH_A, HOLD_A, B, HOLD_B | 1 3 2 7 |
-| 0A | SETUP_SPDIF_FREQ | 1 |
-| 0B–0D | SETUP_MIDI_CC, MIDI_PC, MIDI_CHANNEL | 1 1 0x10 |
-| 0E | SETUP_SPDIF_MODE | 3 |
-| 0F–11 | DUMMY_CCIR_PRESENCE, DUMMY_AUX_LEVEL, DUMMY_AUX_MUTE | 0xFF |
+| idx | name | value | encoding |
+|---|---|---|---|
+| 00 | SETUP_LEVEL | 0x55 | global output level 0..107 |
+| 01 | SETUP_MUTE | 0 | 0/1 |
+| 02 | SETUP_ON_OFF | 1 | |
+| 03 | SETUP_PRESET | 0x7E | current preset, 0x80 = edit buffer; select with `0c 03 n` |
+| 04 | SETUP_PRESET_SOURCE | 0x70 | preset the edit buffer came from |
+| 05 | SETUP_FLAG_PRESET_MODIF | 1 | |
+| 06–09 | SETUP_FOOTSWITCH_A, HOLD_A, B, HOLD_B | 1 3 2 7 | not captured |
+| 0A | SETUP_SPDIF_FREQ | 1 | 0 = 48 kHz, 1 = 96 kHz |
+| 0B | SETUP_MIDI_CC | 1 | 0 = off, 1 = on |
+| 0C | SETUP_MIDI_PC | 1 | 0 = off, 1 = on |
+| 0D | SETUP_MIDI_CHANNEL | 0x10 | channel 1..16 = 0..15, "All" = 0x10 (2026-10-15-midi-all capture) |
+| 0E | SETUP_SPDIF_MODE | 3 | Remote's "Output": 0 = Dry/Dry, 1 = Dry/Wet, 2 = Wet/Dry, 3 = Wet/Wet |
+| 0F–11 | DUMMY_CCIR_PRESENCE, DUMMY_AUX_LEVEL, DUMMY_AUX_MUTE | 0xFF | |

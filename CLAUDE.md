@@ -29,7 +29,9 @@ reference implementation.
 - Preset names, save and rename are decoded (`presets`/`save`/`rename`,
   capture `2026-10-15-presets.log`); `save` (`04 73`) writes flash and refuses
   non-empty slots without `--overwrite`. A076 "TESTCAP" is the user's scratch slot.
-- Still to capture: user IR upload, setup changes (footswitch/MIDI/S/PDIF).
+- Global settings (level, mute, MIDI CC/PC/channel, S/PDIF output and rate)
+  are decoded (`setup NAME=VALUE`, capture `2026-10-15-setup.log`).
+- Still to capture: user IR upload, footswitch settings (setup 06–09).
 
 ## Safety
 

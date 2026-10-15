@@ -3,7 +3,8 @@ import sys
 
 from .device import MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
 from .protocol import (ARCADE, ARCADE_EDITABLE, IR, MODE_NAMES, PARAM_BY_NAME, PARAMS,
-                       PRESET_MODE, PRESETS, SETUP, Cab, find_param, preset_name)
+                       PRESET_MODE, PRESETS, SETUP, SETUP_OPTIONS, Cab, find_param,
+                       preset_name)
 
 
 def parse_assignment(s: str):
@@ -126,11 +127,30 @@ def cmd_rename(t: Torpedo, args):
     print(f"renamed {preset_name(saved.index)} to \"{saved.name}\"")
 
 
+def parse_setup(s: str):
+    name, sep, value = s.partition("=")
+    option = SETUP_OPTIONS.get(name.lower().replace("-", "_"))
+    if not sep or option is None:
+        raise argparse.ArgumentTypeError(f"expected NAME=VALUE with NAME one of: {', '.join(SETUP_OPTIONS)}")
+    try:
+        return option, option.encode(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+
+
 def cmd_setup(t: Torpedo, args):
     values = t.read_setup()
-    for i, name in enumerate(SETUP):
-        v = values.get(i)
-        print(f"{i:02x} {name:<24} {'?' if v is None else f'{v:#04x}'}")
+    for option, v in args.assignments:
+        if t.set_setup(option, v):
+            print(f"  {option.name:<13} {option.decode(values[option.index])} -> {option.decode(v)}")
+    if args.assignments:
+        return
+    for option in SETUP_OPTIONS.values():
+        print(f"{option.name:<13} {option.decode(values[option.index])}")
+    if args.raw:
+        for i, name in enumerate(SETUP):
+            v = values.get(i)
+            print(f"  {i:02x} {name:<24} {'?' if v is None else f'{v:#04x}'}")
 
 
 def find_cab(cabs: list[Cab], key: str) -> Cab:
@@ -211,7 +231,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("preset", nargs="?", type=parse_preset)
     p.set_defaults(func=cmd_preset)
     sub.add_parser("discard", help="drop unsaved edits (reload the current preset)").set_defaults(func=cmd_discard)
-    sub.add_parser("setup", help="global setup values (read-only)").set_defaults(func=cmd_setup)
+    p = sub.add_parser("setup", help="show or change global settings: NAME=VALUE ...")
+    p.add_argument("assignments", nargs="*", type=parse_setup, metavar="NAME=VALUE")
+    p.add_argument("--raw", action="store_true", help="also dump every setup value")
+    p.set_defaults(func=cmd_setup)
     p = sub.add_parser("cabs", help="list a cab bank (0 = the cabs `cab` selects)")
     p.add_argument("--bank", type=int, choices=range(5), default=0)
     p.set_defaults(func=cmd_cabs)
