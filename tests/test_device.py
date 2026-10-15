@@ -1,10 +1,11 @@
 import pytest
 
-from torpedo.device import Torpedo
+from torpedo.device import IgnoredWrite, Torpedo
 from torpedo.fake import A001, FakeHid
 from torpedo.protocol import MSG_POLL, PARAMS, PRESET_MODIFIED, SETUP, find_param
 
 CONTOUR = find_param("arcade_contour")
+PARAMS_ALL = frozenset(range(len(PARAMS)))
 
 
 @pytest.fixture(params=[0, 2], ids=["prompt", "lagging"])
@@ -48,6 +49,26 @@ def test_noop_writes_send_nothing(torpedo):
     assert torpedo.set_param(CONTOUR, A001[0x20]) == {}
     assert torpedo.select_preset(0) == {}
     assert len(commands(torpedo)) == before
+
+
+def test_simulation_params_refused_in_arcade_mode(torpedo):
+    gain = find_param("simuamp_gain")
+    torpedo.read_params()
+    before = len(commands(torpedo))
+    with pytest.raises(IgnoredWrite, match="arcade mode"):
+        torpedo.set_param(gain, 25)
+    assert len(commands(torpedo)) == before, "refused before sending"
+    torpedo.set_param(find_param("reverb_room"), 3)  # shared by both modes
+    torpedo.set_param(find_param("preset_mode"), 0)
+    assert torpedo.set_param(gain, 25) == {0x02: 25}
+
+
+def test_unexpectedly_ignored_write_is_reported(torpedo, monkeypatch):
+    """If the arcade table is incomplete, the missing echo still gives a clear error."""
+    monkeypatch.setattr("torpedo.device.ARCADE_EDITABLE", PARAMS_ALL)
+    torpedo.timeout = 0.05
+    with pytest.raises(IgnoredWrite, match="ignored SIMUAMP_GAIN=25"):
+        torpedo.set_param(find_param("simuamp_gain"), 25)
 
 
 def test_select_preset(torpedo):

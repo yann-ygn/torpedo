@@ -2,7 +2,8 @@ import argparse
 import sys
 
 from .device import Torpedo
-from .protocol import PARAMS, PRESET_MODIFIED, PRESETS, SETUP, find_param, preset_name
+from .protocol import (ARCADE, ARCADE_EDITABLE, PARAMS, PRESET_MODE, PRESET_MODIFIED, PRESETS,
+                       SETUP, find_param, preset_name)
 
 
 def parse_assignment(s: str):
@@ -52,8 +53,12 @@ def cmd_info(t: Torpedo, args):
 
 def cmd_params(t: Torpedo, args):
     values = t.read_params()
+    arcade = values[PRESET_MODE] == ARCADE
+    print(f"mode: {'arcade' if arcade else 'simulation'} (PRESET_MODE={values[PRESET_MODE]})")
     for p in PARAMS:
         rng = f"{p.lo}..{p.hi}" if p.writable else "read-only"
+        if p.writable and arcade and p.index not in ARCADE_EDITABLE:
+            rng += "  simulation mode only"
         print(f"{p.index:02x} {p.name:<20} {values.get(p.index, '?'):>3}  {rng}")
 
 

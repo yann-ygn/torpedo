@@ -11,14 +11,20 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .protocol import (HEARTBEAT, MSG_EMPTY, MSG_INFO, MSG_PARAM, MSG_POLL, MSG_QUERY,
-                       MSG_SETUP, PARAMS, PRESET_MODIFIED, PRESETS, QUERY_INFO, QUERY_PARAMS,
-                       QUERY_SETUP, REPORT_LEN, SETUP, SETUP_PRESET, Param)
+from .protocol import (ARCADE, ARCADE_EDITABLE, HEARTBEAT, MSG_EMPTY, MSG_INFO, MSG_PARAM,
+                       MSG_POLL, MSG_QUERY, MSG_SETUP, PARAMS, PRESET_MODE, PRESET_MODIFIED,
+                       PRESETS, QUERY_INFO, QUERY_PARAMS, QUERY_SETUP, REPORT_LEN, SETUP,
+                       SETUP_PRESET, Param)
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
 READ_TIMEOUT_MS = 100
 TIMEOUT = 2.0
+
+
+class IgnoredWrite(ValueError):
+    """The device drops some writes without a reply: simulation parameters
+    while the preset is in arcade mode."""
 
 
 @dataclass
@@ -52,6 +58,7 @@ class Torpedo:
         self.dev = dev if dev is not None else open_hid()
         self.params: dict[int, int] = {}
         self.setup: dict[int, int] = {}
+        self.timeout = TIMEOUT
         self._exchange(MSG_POLL)  # flush whatever is queued
 
     def close(self):
@@ -68,8 +75,7 @@ class Torpedo:
     def _send(self, *payload: int):
         self.dev.write([0, *payload] + [0] * (REPORT_LEN - len(payload)))
 
-    def _exchange(self, *cmd: int, until: Callable[[bytes], bool] | None = None,
-                  timeout: float = TIMEOUT) -> list[bytes]:
+    def _exchange(self, *cmd: int, until: Callable[[bytes], bool] | None = None) -> list[bytes]:
         """Send `cmd`, then poll until `until` matched a message (if given) and the queue is empty.
 
         The reply to a write may lag behind it, so an empty queue only ends the
@@ -77,7 +83,7 @@ class Torpedo:
         """
         self._send(*cmd)
         msgs, done = [], until is None
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + self.timeout
         while True:
             p = bytes(self.dev.read(REPORT_LEN, READ_TIMEOUT_MS))
             if not p or p[0] == MSG_EMPTY:
@@ -131,8 +137,18 @@ class Torpedo:
             self.read_params()
         if self.params[param.index] == value:
             return {}  # the device would not answer
+        if self.params[PRESET_MODE] == ARCADE and param.index not in ARCADE_EDITABLE:
+            raise IgnoredWrite(f"{param.name} can't be edited in arcade mode "
+                               "(set preset_mode=0 for simulation mode first)")
         echo = bytes([MSG_PARAM, param.index, value])
-        msgs = self._exchange(MSG_PARAM, param.index, value, until=lambda p: p[:3] == echo)
+        try:
+            msgs = self._exchange(MSG_PARAM, param.index, value, until=lambda p: p[:3] == echo)
+        except TimeoutError:
+            if self.read_params()[param.index] == value:
+                raise
+            mode = self.params.get(PRESET_MODE)
+            raise IgnoredWrite(f"the Torpedo ignored {param.name}={value} "
+                               f"(PRESET_MODE={mode})") from None
         return {p[1]: p[2] for p in msgs if p[0] == MSG_PARAM}
 
     @property

@@ -12,12 +12,16 @@ reference implementation.
 - Write + discard verified (`tools/writetest.py --write [--poll]`): `01 20 16`,
   then `0c 03 0` restores the preset. Clients must poll with `7e` until `05`
   (see PROTOCOL.md "Polling").
-- Package `src/torpedo/` (2026-10-15): `protocol.py` (tables, provisional
-  ranges), `device.py` (transport + cache), `fake.py` (report-level emulator,
+- Package `src/torpedo/` (2026-10-15): `protocol.py` (tables, ranges,
+  arcade/simulation rules), `device.py` (transport + cache), `fake.py` (report-level emulator,
   raises on unobserved commands), `cli.py` (info/params/get/set/preset/discard/setup).
   Verified on the unit. No TUI yet.
-- Ranges are provisional except ARCADE_CONTOUR: a capture sweeping each knob
-  to min/max in Torpedo Remote would pin them. Cab/IR selection params are read-only.
+- Ranges come from a min/max sweep capture (`captures/2026-10-15-ranges.log`,
+  `tools/ranges.py`). Cab/IR selection params are read-only. That capture also
+  showed setup writes (`0c 00` level, `0c 01` mute) and a cab preview upload
+  (`6e`/`6f`/`70`), not implemented yet.
+- Arcade mode only accepts writes to `ARCADE_EDITABLE` (protocol.py, probed
+  with `tools/modeprobe.py`); the client refuses the rest up front.
 - One-off scripts in `tools/` run with `uv run python tools/<x>.py`.
 - Still to capture: preset names, save/rename preset, user IR upload,
   setup changes (footswitch/MIDI/S/PDIF).

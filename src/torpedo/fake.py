@@ -8,9 +8,9 @@ capture raise, so tests also check that nothing unknown gets sent.
 
 from collections import deque
 
-from .protocol import (MSG_EMPTY, MSG_INFO, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP,
-                       PRESET_MODIFIED, PRESETS, QUERY_INFO, QUERY_PARAMS, QUERY_SETUP,
-                       REPORT_LEN, SETUP_PRESET)
+from .protocol import (ARCADE, ARCADE_EDITABLE, MSG_EMPTY, MSG_INFO, MSG_PARAM, MSG_POLL,
+                       MSG_QUERY, MSG_SETUP, PRESET_MODE, PRESET_MODIFIED, PRESETS, QUERY_INFO,
+                       QUERY_PARAMS, QUERY_SETUP, REPORT_LEN, SETUP_PRESET)
 
 # Read from the real unit (preset A001 and setup, 2026-10-15)
 A001 = [0, 5, 0, 127, 127, 1, 1, 0, 16, 0, 0, 0, 0, 5, 0, 17, 1, 1, 0, 21, 20, 20, 20, 21, 87,
@@ -77,7 +77,7 @@ class FakeHid:
             raise AssertionError(f"fake: command never observed on the real device: {b[:4].hex(' ')}")
 
     def _set_param(self, idx: int, val: int):
-        if self.params[idx] == val:
+        if self.params[idx] == val or (self.params[PRESET_MODE] == ARCADE and idx not in ARCADE_EDITABLE):
             return
         changes = {EQ_GAIN0: val, EQ_GAIN4: val} if idx == CONTOUR else {}
         for i, v in changes.items():

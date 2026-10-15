@@ -60,16 +60,57 @@ polling. Without polling, the reply to a write may also be a bare `05`
 |---|---|---|
 | `01 idx val` | set parameter | linked parameters it recomputed first (e.g. ARCADE_CONTOUR also moves EQ_L_GAIN0/4 and sometimes PRESET_LEVEL), then the echo `01 idx val`, then `0c 03 (0x80 \| n)` after the first edit: bit 7 of SETUP_PRESET = current preset modified (`0c 04 00` also appeared in the Remote capture) |
 | `0c 03 n` | select preset n (0 = A001) | `01 idx val` for every parameter that differs, then `0c 03 n`; discards an unsaved edit (verified: contour 21 → 22 → reselect → 21, all 51 params identical) |
+| `0c 00 v` | SETUP_LEVEL, global output level, 0..107 (0x6b) | echo `0c 00 v` |
+| `0c 01 v` | SETUP_MUTE 0/1 | echo `0c 01 v` |
+| `6e`, `6f` ×N, `70` | upload a cab into the preview slot (see below) | `04 70` per report, `04 0d` after `70` |
 
-Not captured yet: preset names, save, rename, store-preset, user IR upload,
-footswitch/MIDI setup changes.
+No reply at all to a no-op: writing a parameter's current value, or
+reselecting the current unmodified preset. Also no reply, and no change, when
+the parameter can't be edited in the preset's mode (next section).
+
+### Arcade vs simulation mode
+
+Both modes are front ends over the same 51 parameters; PRESET_MODE (0x22)
+picks one (1 = arcade, 0 = simulation). Probed parameter by parameter on the
+unit (`tools/modeprobe.py`, each write one step from A001, then reselect):
+
+- Arcade mode accepts only the 6 `ARCADE_*` macros, SIMUHP_MIC, REVERB_ROOM,
+  EQ_L_FREQ_F0..F4 (and PRESET_MODE). Every other write is silently dropped.
+- Each macro recomputes simulation parameters, reported before its echo:
+
+  | macro | recomputes |
+  |---|---|
+  | ARCADE_GUITARBASS | EQ_MODE, SIMUAMP_MODELE |
+  | ARCADE_POWERAMP | SIMUAMP, SIMUAMP_GAIN, PRESET_LEVEL |
+  | ARCADE_DISTANCE | SIMUHP_DISTANCE, REVERB_L_DRYWET |
+  | ARCADE_TONE | SIMUHP_CENTER |
+  | ARCADE_CONTOUR | EQ_L_GAIN0, EQ_L_GAIN4 |
+  | ARCADE_LEVEL | PRESET_LEVEL |
+
+- Simulation mode accepts every parameter; `ARCADE_*` writes are then only
+  stored (nothing recomputed). Switching mode recomputes nothing either, so
+  simulation mode starts from the values arcade mode produced.
+
+### Cab preview upload (`6e` / `6f` / `70`)
+
+Clicking a cab in Torpedo Remote's library (2026-10-15-ranges capture,
+"Mars Asto 112 Cream Live" by "Noise Factory") sent 4 × `6e 00 05 …` (header:
+`2f 98 07 00` *(?)*, cab name, mic list `44 79 6e …` = "Dyn 421", "Dyn
+Bass20", …, maker name), 200 × `6f` (63 bytes of data each, apparently 24-bit
+little-endian samples), then `70`. The device acks each report with `04 70`
+and the end with `04 0d`. Remote then sent `01 07 02` (SIMUHP_PREVIEW = 2,
+play the preview cab) and `01 07 00` to leave preview. Whether the slot is
+RAM-only is not known: don't send these yet.
+
+Not captured yet: preset names, save, rename, store-preset, user IR upload
+(to a bank, as opposed to the preview slot), footswitch/MIDI setup changes.
 
 ## Do not send
 
 From the RTTI: `RebootableCommand<0x03>`, `<0x04>`, `<0x27>`, `UpdateFirmwareCommand`,
 `SecureEraseCommand`, `ClearPresetsCommand`, `ClearBankCommand`, factory reset.
 Their wire IDs are not mapped yet, so never send a command type that has not
-been observed in a capture. Writes seen so far: `01`, `0c 03`, `7e`.
+been observed in a capture. Writes seen so far: `01`, `0c 00`, `0c 01`, `0c 03`, `6e`, `6f`, `70`, `7e`.
 
 Command IDs present in the exe (MSVC template args, decoded): `Command<>` 0x01,
 0x03, 0x04, 0x08, 0x09, 0x0A, 0x0B, 0x0E, 0x0F, 0x16, 0x27, 0x31, 0x38, 0x3A,
@@ -89,12 +130,12 @@ those of preset A001.
 |---|---|---|---|
 | 00 | SIMUAMP | 0 | amp sim on/off |
 | 01 | SIMUAMP_MODELE | 5 | |
-| 02 | SIMUAMP_GAIN | 0 | |
+| 02 | SIMUAMP_GAIN | 0 | 0..30 |
 | 03 | SIMUAMP_CONTOUR | 127 | presence in the .top files *(?)* |
 | 04 | SIMUAMP_DEPTH | 127 | |
 | 05 | SIMUAMP_CHARACTER | 1 | |
 | 06 | SIMUHP | 1 | cab sim on/off |
-| 07 | SIMUHP_PREVIEW | 0 | |
+| 07 | SIMUHP_PREVIEW | 0 | 2 = play the uploaded preview cab |
 | 08 | SIMUHP_SPEAKER | 16 | |
 | 09 | SIMUHP_WAVE0 | 0 | |
 | 0A | SIMUHP_WAVE1 | 0 | |
@@ -107,27 +148,30 @@ those of preset A001.
 | 11 | EQ | 1 | |
 | 12 | EQ_MODE | 0 | |
 | 13–17 | EQ_L_GAIN0..4 | 21 20 20 20 21 | 20 = flat *(?)* |
-| 18 | PRESET_LEVEL | 87 | |
+| 18 | PRESET_LEVEL | 87 | 0..107 |
 | 19 | REVERB | 1 | |
 | 1A | REVERB_ROOM | 0 | |
 | 1B | REVERB_L_DRYWET | 1 | |
 | 1C | ARCADE_GUITARBASS | 0 | |
-| 1D | ARCADE_POWERAMP | 0 | 2 after "power amp on" (also set SIMUAMP=1, GAIN=2) |
+| 1D | ARCADE_POWERAMP | 0 | knob 0..30; 2 after "power amp on" (also set SIMUAMP=1, GAIN=2) |
 | 1E | ARCADE_DISTANCE | 0 | |
 | 1F | ARCADE_TONE | 38 | |
 | 20 | ARCADE_CONTOUR | 21 | 0..40, UI % = val × 2.5 (21 = 52%, 22 = 55%) |
 | 21 | ARCADE_LEVEL | 87 | |
-| 22 | PRESET_MODE | 1 | arcade / simulation *(?)* |
+| 22 | PRESET_MODE | 1 | 1 = arcade, 0 = simulation |
 | 23 | SIMUHP_LEVEL | 95 | |
 | 24 | SIMUHP_PHASE | 0 | |
 | 25 | SIMUHP_MUTE | 0 | |
 | 26–2C | SIMUHP_MIC_2, DISTANCE_2, CENTER_2, POSITION_2, LEVEL_2, PHASE_2, MUTE_2 | 0 0 0 1 95 0 1 | mic B |
-| 2D | EQ_L_FREQ_LOW | 0 | low cut |
+| 2D | EQ_L_FREQ_LOW | 0 | low cut, 0..127 |
 | 2E–32 | EQ_L_FREQ_F0..F4 | 57 ×5 | |
 
-Ranges are unknown except contour; the factory `.top` presets in
+Ranges come from sweeping every control to min/max in Torpedo Remote
+(`captures/2026-10-15-ranges.log`, summarized by `tools/ranges.py`); the
+device echoed every extreme unchanged. The full table is in
+`src/torpedo/protocol.py`. The factory `.top` presets in
 `C:\Program Files\Two notes Audio Engineering\Torpedo Remote v5\Presets\Live`
-are plain XML with the same parameters (`TOP_*` names) and help bound them.
+are plain XML with the same parameters (`TOP_*` names).
 
 ## Setup (`0c idx val`)
 

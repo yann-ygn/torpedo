@@ -44,20 +44,20 @@ class Param:
 RO = (0, 127, False)
 KNOB = (0, 127)
 
-# Order = LiveCABParameterIndexDictionary in the exe. Ranges are provisional:
-# only ARCADE_CONTOUR (0..40) was checked against the UI. The others are the
-# widest of the factory .top presets (Live first, other products when the
-# meaning is the same) and the values seen on the unit; widen them after a
-# min/max sweep capture of each knob in Torpedo Remote.
+# Order = LiveCABParameterIndexDictionary in the exe. Ranges come from a
+# min/max sweep of every control in Torpedo Remote
+# (captures/2026-10-15-ranges.log, check with tools/ranges.py); the device
+# echoed every extreme unchanged. Not swept: ARCADE_GUITARBASS, PRESET_MODE
+# (values seen on the unit) and SIMUHP_MIC_2 (assumed same list as mic A).
 PARAMS = [Param(i, *row) for i, row in enumerate([
     ("SIMUAMP", 0, 1),
     ("SIMUAMP_MODELE", 0, 7),
-    ("SIMUAMP_GAIN", 0, 15),  # Live presets stop at 15, other products go to 127
+    ("SIMUAMP_GAIN", 0, 30),
     ("SIMUAMP_CONTOUR", *KNOB),  # presence
     ("SIMUAMP_DEPTH", *KNOB),
     ("SIMUAMP_CHARACTER", 0, 1),
     ("SIMUHP", 0, 1),
-    ("SIMUHP_PREVIEW", *RO),
+    ("SIMUHP_PREVIEW", *RO),  # 2 = play a cab uploaded with 6e/6f/70 (Remote library preview)
     ("SIMUHP_SPEAKER", *RO),  # cab selection: index space not mapped yet
     ("SIMUHP_WAVE0", *RO),
     ("SIMUHP_WAVE1", *RO),
@@ -74,17 +74,17 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("EQ_L_GAIN2", 0, 40),
     ("EQ_L_GAIN3", 0, 40),
     ("EQ_L_GAIN4", 0, 40),
-    ("PRESET_LEVEL", 0, 95),  # levels: capped at the highest value seen, dB mapping unknown
+    ("PRESET_LEVEL", 0, 107),  # dB mapping unknown
     ("REVERB", 0, 1),
     ("REVERB_ROOM", 0, 7),
     ("REVERB_L_DRYWET", *KNOB),
     ("ARCADE_GUITARBASS", 0, 1),
-    ("ARCADE_POWERAMP", 0, 2),  # 2 = "power amp on" in the capture
+    ("ARCADE_POWERAMP", 0, 30),  # a knob, not a selector
     ("ARCADE_DISTANCE", 0, 44),
     ("ARCADE_TONE", 0, 44),
     ("ARCADE_CONTOUR", 0, 40),  # UI % = value * 2.5
-    ("ARCADE_LEVEL", 0, 97),
-    ("PRESET_MODE", 0, 2),
+    ("ARCADE_LEVEL", 0, 107),
+    ("PRESET_MODE", 0, 1),  # ARCADE / SIMULATION below
     ("SIMUHP_LEVEL", 0, 107),
     ("SIMUHP_PHASE", 0, 1),
     ("SIMUHP_MUTE", 0, 1),
@@ -95,7 +95,7 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("SIMUHP_LEVEL_2", 0, 107),
     ("SIMUHP_PHASE_2", 0, 1),
     ("SIMUHP_MUTE_2", 0, 1),
-    ("EQ_L_FREQ_LOW", 0, 117),  # low cut
+    ("EQ_L_FREQ_LOW", *KNOB),  # low cut
     ("EQ_L_FREQ_F0", *KNOB),
     ("EQ_L_FREQ_F1", *KNOB),
     ("EQ_L_FREQ_F2", *KNOB),
@@ -103,6 +103,21 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("EQ_L_FREQ_F4", *KNOB),
 ])]
 PARAM_BY_NAME = {p.name: p for p in PARAMS}
+PRESET_MODE = PARAM_BY_NAME["PRESET_MODE"].index
+ARCADE, SIMULATION = 1, 0  # PRESET_MODE values
+
+# Arcade mode is a front end over the same parameters: its 6 ARCADE_* macros
+# recompute simulation parameters (tools/modeprobe.py, 2026-10-15):
+#   GUITARBASS -> EQ_MODE, SIMUAMP_MODELE      DISTANCE -> SIMUHP_DISTANCE, REVERB_L_DRYWET
+#   POWERAMP -> SIMUAMP, SIMUAMP_GAIN, PRESET_LEVEL   TONE -> SIMUHP_CENTER
+#   CONTOUR -> EQ_L_GAIN0, EQ_L_GAIN4          LEVEL -> PRESET_LEVEL
+# In arcade mode the device silently ignores writes to anything else except
+# the parameters below. Simulation mode accepts everything (ARCADE_* are then
+# just stored, nothing is recomputed).
+ARCADE_EDITABLE = frozenset(PARAM_BY_NAME[n].index for n in """
+    ARCADE_GUITARBASS ARCADE_POWERAMP ARCADE_DISTANCE ARCADE_TONE ARCADE_CONTOUR ARCADE_LEVEL
+    SIMUHP_MIC REVERB_ROOM EQ_L_FREQ_F0 EQ_L_FREQ_F1 EQ_L_FREQ_F2 EQ_L_FREQ_F3 EQ_L_FREQ_F4
+    PRESET_MODE""".split())
 
 # Order = LiveCABSetupIndexDictionary. Read-only: only preset selection
 # (0c 03 n) has been observed as a write.
