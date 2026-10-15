@@ -3,7 +3,7 @@ import sys
 
 from .device import MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
 from .protocol import (ARCADE, ARCADE_EDITABLE, IR, MODE_NAMES, PARAM_BY_NAME, PARAMS,
-                       PRESET_MODE, PRESET_MODIFIED, PRESETS, SETUP, Cab, find_param, preset_name)
+                       PRESET_MODE, PRESETS, SETUP, Cab, find_param, preset_name)
 
 
 def parse_assignment(s: str):
@@ -37,8 +37,8 @@ def parse_preset(s: str) -> int:
     raise argparse.ArgumentTypeError(f"preset must be 1..{PRESETS} or A001..A{PRESETS:03d}")
 
 
-def fmt_preset(p: int) -> str:
-    return preset_name(p) + (" (modified)" if p & PRESET_MODIFIED else "")
+def fmt_preset(t: Torpedo) -> str:
+    return preset_name(t.source) + (" (modified)" if t.edited else "")
 
 
 def print_changes(before: dict[int, int], changes: dict[int, int]):
@@ -48,7 +48,7 @@ def print_changes(before: dict[int, int], changes: dict[int, int]):
 
 def cmd_info(t: Torpedo, args):
     i = t.info()
-    print(f"serial={i.serial} firmware={i.firmware}(?) preset={fmt_preset(t.preset)}")
+    print(f"serial={i.serial} firmware={i.firmware}(?) preset={fmt_preset(t)}")
 
 
 def cmd_params(t: Torpedo, args):
@@ -73,20 +73,57 @@ def cmd_set(t: Torpedo, args):
     for param, value in args.assignments:
         print_changes(before, t.set_param(param, value))
         before = dict(t.params)
-    print(f"preset {fmt_preset(t.preset)}: unsaved; `torpedo discard` reloads it")
+    print(f"preset {fmt_preset(t)}: unsaved; `torpedo discard` reloads it, `torpedo save` keeps it")
 
 
 def cmd_preset(t: Torpedo, args):
     if args.preset is not None:
         before = t.read_params()
         print_changes(before, t.select_preset(args.preset))
-    print(f"preset {fmt_preset(t.preset)}")
+    print(f"preset {fmt_preset(t)}")
 
 
 def cmd_discard(t: Torpedo, args):
     before = t.read_params()
     print_changes(before, t.discard())
-    print(f"preset {fmt_preset(t.preset)}")
+    print(f"preset {fmt_preset(t)}")
+
+
+def cmd_presets(t: Torpedo, args):
+    names = t.read_names()
+    current = t.source
+    for p in names[:PRESETS]:
+        if p.empty and not args.all:
+            continue
+        mark = "*" if p.index == current else " "
+        kind = "" if p.empty else "arcade" if p.arcade else "simulation"  # as Remote labels them
+        print(f"{mark} {preset_name(p.index)} {p.name:<26} {kind}")
+    hidden = sum(p.empty for p in names[:PRESETS])
+    if hidden and not args.all:
+        print(f"  ({hidden} empty USER slots hidden, first {preset_name(first_empty(names))}; --all shows them)")
+    print(f"current: {fmt_preset(t)} \"{names[-1].name}\"")
+
+
+def first_empty(names) -> int:
+    return next(p.index for p in names[:PRESETS] if p.empty)
+
+
+def cmd_save(t: Torpedo, args):
+    names = t.read_names()
+    slot = args.preset if args.preset is not None else first_empty(names)
+    if not names[slot].empty and not args.overwrite:
+        sys.exit(f"error: {preset_name(slot)} holds \"{names[slot].name}\"; "
+                 "add --overwrite to replace it")
+    saved = t.save(slot, args.name, overwrite=args.overwrite, names=names)
+    print(f"saved {preset_name(saved.index)} \"{saved.name}\"")
+
+
+def cmd_rename(t: Torpedo, args):
+    if t.edited:
+        sys.exit("error: the current preset has unsaved edits, and renaming saves them too: "
+                 "`torpedo save` or `torpedo discard` first")
+    saved = t.save(t.source, args.name, overwrite=True)
+    print(f"renamed {preset_name(saved.index)} to \"{saved.name}\"")
 
 
 def cmd_setup(t: Torpedo, args):
@@ -185,6 +222,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("slot", nargs="?", type=int, choices=(1, 2))
     p.add_argument("ir", nargs="?", metavar="IR", help="index, name or part of the name")
     p.set_defaults(func=cmd_ir)
+    p = sub.add_parser("presets", help="list the stored presets")
+    p.add_argument("--all", action="store_true", help="also list the empty USER slots")
+    p.set_defaults(func=cmd_presets)
+    p = sub.add_parser("save", help="store the current sound into a preset (default: first empty USER slot)")
+    p.add_argument("preset", nargs="?", type=parse_preset)
+    p.add_argument("--name", help="preset name (A-Z, 0-9, space; default: keep the current one)")
+    p.add_argument("--overwrite", action="store_true", help="allow replacing a non-empty preset")
+    p.set_defaults(func=cmd_save)
+    p = sub.add_parser("rename", help="rename the current preset (must have no unsaved edits)")
+    p.add_argument("name")
+    p.set_defaults(func=cmd_rename)
     return ap
 
 

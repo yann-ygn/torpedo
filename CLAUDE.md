@@ -26,8 +26,10 @@ reference implementation.
 - Arcade mode only accepts writes to `ARCADE_EDITABLE` (protocol.py, probed
   with `tools/modeprobe.py`); the client refuses the rest up front.
 - One-off scripts in `tools/` run with `uv run python tools/<x>.py`.
-- Still to capture: preset names, save/rename preset, user IR upload,
-  setup changes (footswitch/MIDI/S/PDIF).
+- Preset names, save and rename are decoded (`presets`/`save`/`rename`,
+  capture `2026-10-15-presets.log`); `save` (`04 73`) writes flash and refuses
+  non-empty slots without `--overwrite`. A076 "TESTCAP" is the user's scratch slot.
+- Still to capture: user IR upload, setup changes (footswitch/MIDI/S/PDIF).
 
 ## Safety
 

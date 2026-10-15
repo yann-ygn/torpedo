@@ -32,9 +32,32 @@ HEARTBEAT = bytes([MSG_QUERY, 0x02])
 MSG_CAB = 0x06
 MIC_SLOT = 12
 
-SETUP_PRESET = 0x03
-PRESET_MODIFIED = 0x80  # bit 7 of SETUP_PRESET: current preset has unsaved edits
-PRESETS = 128  # (?) 7-bit index, bit 7 is the modified flag
+SETUP_PRESET = 0x03  # current preset, or EDIT_BUFFER once it has unsaved edits
+SETUP_PRESET_SOURCE = 0x04  # preset the edit buffer came from
+EDIT_BUFFER = 0x80
+PRESETS = 128  # A001..A128
+
+# Preset names: `04 09 81` -> 129 x `03 idx arcade name`: presets 0..127, then
+# the edit buffer (0x80); `04 09 80` -> the edit buffer only. `arcade` is 1 when
+# the preset's PRESET_MODE is arcade (stored with it; Remote's arcade/simulation
+# label). Empty user slots are named "USER".
+MSG_NAME = 0x03  # host: 03 80 <name> renames the edit buffer (echoed)
+QUERY_NAMES = 0x09
+NAMES_ALL, NAMES_EDIT_BUFFER = 0x81, 0x80
+# 04 73 n: store the edit buffer into preset n (a flash write). The device
+# answers ~2 s later: 03 n <name>, 0c 03 n, 0c 04 n, 0c 05 00.
+QUERY_STORE = 0x73
+EMPTY_PRESET = "USER"
+NAME_MAX = 25  # longest factory name; the real limit is unknown
+NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")  # seen in factory names
+
+
+def check_name(name: str) -> str:
+    """Uppercase and validate a preset name (only characters seen in factory names)."""
+    name = name.upper()
+    if not 1 <= len(name) <= NAME_MAX or not set(name) <= NAME_CHARS:
+        raise ValueError(f"preset name must be 1..{NAME_MAX} characters among A-Z, 0-9 and space")
+    return name
 
 
 @dataclass(frozen=True)
@@ -174,5 +197,21 @@ def find_param(key: str) -> Param:
 
 
 def preset_name(n: int) -> str:
-    """Preset index -> label as Torpedo Remote shows it (0 = A001). (?) past A001."""
-    return f"A{(n & 0x7F) + 1:03d}"
+    """Preset index -> label as Torpedo Remote shows it (0 = A001)."""
+    return f"A{n + 1:03d}"
+
+
+def parse_name(p: bytes) -> str:
+    """Name in a `03 idx flag name` report."""
+    return _str(p[3:])
+
+
+@dataclass
+class PresetName:
+    index: int  # 0..127, or EDIT_BUFFER
+    name: str
+    arcade: bool
+
+    @property
+    def empty(self) -> bool:
+        return self.name == EMPTY_PRESET

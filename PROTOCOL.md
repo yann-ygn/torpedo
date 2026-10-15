@@ -50,7 +50,7 @@ polling. Without polling, the reply to a write may also be a bare `05`
 | `04 0a` | 51 × `01 idx val` | every parameter of the current preset (see table) |
 | `04 0b` | 18 × `0c idx val` | setup values (see table) |
 | `04 08 <bank>` | N × `06 bank idx part …`, then `04 10 bank …` | cabinet bank contents (layout below). Bank 0 = 32 cabs × 4 parts (Two notes + partners: Black Bear, Mirador, Suhr/Celestion…), bank 1 = 86 IRs × 2 parts ("ML-FRMN-FREEDOM"…), banks 2–4 = user IR banks, no records on this unit (only the `04 10` end marker) |
-| `04 09 81` | 129 × `03 idx flag name` | legacy speaker names (v3 era: "BDELUXE 1 RBN", "USER", "RECORDING …", "… 2MICS"); count = arg & 0x7F + 1 *(?)*. `04 09 80` returned a single entry |
+| `04 09 81` | 129 × `03 idx arcade name` | preset names: presets 0–127 (A001–A128), then the edit buffer (idx 0x80). `arcade` = 1 when the preset is in arcade mode: it follows PRESET_MODE (the edit buffer's flips as soon as the mode changes) and is stored with the preset, which is how Remote marks presets as arcade or simulation. Empty user slots are named "USER" (A076–A109 and A116–A118 here). The factory simulation presets are A110–A115 ("RECORDING …") and A119–A128 ("… 2MICS"). `04 09 80` returns the edit buffer's entry only |
 | `04 33`, `04 34` | `04 0f slot name` + 3 × `04 31 slot n` | names of the IRs loaded in mic slot 0 / 1. Slot 0 follows SIMUHP_SPEAKER (A001: "LuxTweeDe" = bank 0 #16); slot 1 said "Brit VintC" with mic B muted *(?)* |
 | `04 15 <bank> <idx>` | `6e …` ×2, `6f …` ×~45, `70 …` | waveform of an IR, for the display (Remote sends `04 15 01 55` after loading ML IR 85 into a slot); `6e` = header with the IR name, `6f` = data chunks, `70` = end |
 
@@ -92,7 +92,7 @@ use the same parameters as simulation mode.
 
 | Sent | Effect | Device reply |
 |---|---|---|
-| `01 idx val` | set parameter | linked parameters it recomputed first (e.g. ARCADE_CONTOUR also moves EQ_L_GAIN0/4 and sometimes PRESET_LEVEL), then the echo `01 idx val`, then `0c 03 (0x80 \| n)` after the first edit: bit 7 of SETUP_PRESET = current preset modified (`0c 04 00` also appeared in the Remote capture) |
+| `01 idx val` | set parameter | linked parameters it recomputed first (e.g. ARCADE_CONTOUR also moves EQ_L_GAIN0/4 and sometimes PRESET_LEVEL), then the echo `01 idx val`, then after the first edit `0c 03 80` (SETUP_PRESET = 0x80: the edit buffer) and `0c 04 n` (SETUP_PRESET_SOURCE: the preset it came from) |
 | `0c 03 n` | select preset n (0 = A001) | `01 idx val` for every parameter that differs, then `0c 03 n`; discards an unsaved edit (verified: contour 21 → 22 → reselect → 21, all 51 params identical) |
 | `0c 00 v` | SETUP_LEVEL, global output level, 0..107 (0x6b) | echo `0c 00 v` |
 | `0c 01 v` | SETUP_MUTE 0/1 | echo `0c 01 v` |
@@ -137,15 +137,35 @@ and the end with `04 0d`. Remote then sent `01 07 02` (SIMUHP_PREVIEW = 2,
 play the preview cab) and `01 07 00` to leave preview. Whether the slot is
 RAM-only is not known: don't send these yet.
 
-Not captured yet: preset names, save, rename, store-preset, user IR upload
-(to a bank, as opposed to the preview slot), footswitch/MIDI setup changes.
+### Saving a preset (2026-10-15-presets capture)
+
+Torpedo Remote has a single "save" (renaming = saving under a new name):
+
+1. `03 80 <name>` (name from byte 2, NUL-padded): names the edit buffer; the
+   device echoes `03 80 <arcade> <name>`.
+2. `04 73 n`: stores the edit buffer into preset n. This writes flash: about
+   2 s later the device sends `03 n <arcade> <name>`, `0c 03 n`, `0c 04 n`,
+   `0c 05 00`.
+
+Seen: "TESTCAP2" then "TESTCAP" stored into A076 (an empty "USER" slot).
+Factory names use A–Z, 0–9 and spaces, up to 25 characters; the real limits
+aren't known, so `torpedo` sticks to that.
+
+SETUP_PRESET is n while preset n is loaded unmodified and 0x80 once it is
+edited, with the source in SETUP_PRESET_SOURCE (editing A067 gave `0c 03 80`,
+`0c 04 42`). It is not a bit 7 flag on n. SETUP_FLAG_PRESET_MODIF went to 0
+after a store and 1 after the next edit, but also read 1 for an unedited
+A001, so it isn't used.
+
+Not captured yet: user IR upload (to a bank, as opposed to the preview slot),
+footswitch/MIDI setup changes.
 
 ## Do not send
 
 From the RTTI: `RebootableCommand<0x03>`, `<0x04>`, `<0x27>`, `UpdateFirmwareCommand`,
 `SecureEraseCommand`, `ClearPresetsCommand`, `ClearBankCommand`, factory reset.
 Their wire IDs are not mapped yet, so never send a command type that has not
-been observed in a capture. Writes seen so far: `01`, `0c 00`, `0c 01`, `0c 03`, `6e`, `6f`, `70`, `7e`.
+been observed in a capture. Writes seen so far: `01`, `03 80`, `04 73` (flash), `0c 00`, `0c 01`, `0c 03`, `6e`, `6f`, `70`, `7e`.
 
 Command IDs present in the exe (MSVC template args, decoded): `Command<>` 0x01,
 0x03, 0x04, 0x08, 0x09, 0x0A, 0x0B, 0x0E, 0x0F, 0x16, 0x27, 0x31, 0x38, 0x3A,
@@ -217,8 +237,8 @@ Order is `LiveCABSetupIndexDictionary`. Values are from the first read.
 | 00 | SETUP_LEVEL | 0x55 |
 | 01 | SETUP_MUTE | 0 |
 | 02 | SETUP_ON_OFF | 1 |
-| 03 | SETUP_PRESET | 0x7E (current preset; select with `0c 03 n`) |
-| 04 | SETUP_PRESET_SOURCE | 0x70 |
+| 03 | SETUP_PRESET | 0x7E (current preset, 0x80 = edit buffer; select with `0c 03 n`) |
+| 04 | SETUP_PRESET_SOURCE | 0x70 (preset the edit buffer came from) |
 | 05 | SETUP_FLAG_PRESET_MODIF | 1 |
 | 06–09 | SETUP_FOOTSWITCH_A, HOLD_A, B, HOLD_B | 1 3 2 7 |
 | 0A | SETUP_SPDIF_FREQ | 1 |

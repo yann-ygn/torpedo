@@ -11,12 +11,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, FOLDER_BANK_OFFSET, HEARTBEAT, MSG_CAB,
-                       MSG_EMPTY,
-                       MSG_INFO, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP, PARAM_BY_NAME,
-                       PARAMS, PRESET_MODE, PRESET_MODIFIED, PRESETS, QUERY_BANK, QUERY_INFO,
-                       QUERY_PARAMS, QUERY_SETUP, REPORT_LEN, SETUP, SETUP_PRESET, Cab, Param,
-                       parse_cab)
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, FOLDER_BANK_OFFSET,
+                       HEARTBEAT, MSG_CAB, MSG_EMPTY, MSG_INFO, MSG_NAME, MSG_PARAM, MSG_POLL,
+                       MSG_QUERY, MSG_SETUP, NAMES_ALL, PARAM_BY_NAME, PARAMS, PRESET_MODE,
+                       PRESETS, QUERY_BANK, QUERY_INFO, QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP,
+                       QUERY_STORE, REPORT_LEN, SETUP, SETUP_PRESET, SETUP_PRESET_SOURCE, Cab,
+                       Param, PresetName, check_name, parse_cab, parse_name, preset_name)
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
@@ -26,6 +26,7 @@ WAVES = (PARAM_BY_NAME["SIMUHP_WAVE0"].index, PARAM_BY_NAME["SIMUHP_WAVE1"].inde
 FOLDERS = (PARAM_BY_NAME["SIMUHP_FOLDER_IR_0"].index, PARAM_BY_NAME["SIMUHP_FOLDER_IR_1"].index)
 READ_TIMEOUT_MS = 100
 TIMEOUT = 2.0
+STORE_TIMEOUT = 6.0  # storing a preset was answered after ~2.1 s
 
 
 class IgnoredWrite(ValueError):
@@ -81,7 +82,8 @@ class Torpedo:
     def _send(self, *payload: int):
         self.dev.write([0, *payload] + [0] * (REPORT_LEN - len(payload)))
 
-    def _exchange(self, *cmd: int, until: Callable[[bytes], bool] | None = None) -> list[bytes]:
+    def _exchange(self, *cmd: int, until: Callable[[bytes], bool] | None = None,
+                  timeout: float | None = None) -> list[bytes]:
         """Send `cmd`, then poll until `until` matched a message (if given) and the queue is empty.
 
         The reply to a write may lag behind it, so an empty queue only ends the
@@ -89,7 +91,7 @@ class Torpedo:
         """
         self._send(*cmd)
         msgs, done = [], until is None
-        deadline = time.monotonic() + self.timeout
+        deadline = time.monotonic() + (timeout or self.timeout)
         while True:
             p = bytes(self.dev.read(REPORT_LEN, READ_TIMEOUT_MS))
             if not p or p[0] == MSG_EMPTY:
@@ -202,10 +204,55 @@ class Torpedo:
 
     @property
     def preset(self) -> int:
-        """Current preset index; bit 7 (PRESET_MODIFIED) is set if it has unsaved edits."""
+        """Current preset index, or EDIT_BUFFER if it has unsaved edits (see `source`)."""
         if SETUP_PRESET not in self.setup:
             self.read_setup()
         return self.setup[SETUP_PRESET]
+
+    @property
+    def source(self) -> int:
+        """The preset the current sound comes from, edited or not."""
+        p = self.preset
+        return self.setup[SETUP_PRESET_SOURCE] if p == EDIT_BUFFER else p
+
+    @property
+    def edited(self) -> bool:
+        return self.preset == EDIT_BUFFER
+
+    def read_names(self) -> list[PresetName]:
+        """Names of the 128 presets, then the edit buffer's (index EDIT_BUFFER)."""
+        seen: dict[int, PresetName] = {}
+
+        def complete(p: bytes) -> bool:
+            if p[0] == MSG_NAME:
+                seen[p[1]] = PresetName(p[1], parse_name(p), bool(p[2]))
+            return len(seen) == PRESETS + 1
+        self._exchange(MSG_QUERY, QUERY_NAMES, NAMES_ALL, until=complete)
+        return [seen[i] for i in sorted(seen)]
+
+    def save(self, n: int, name: str | None = None, overwrite: bool = False,
+             names: list[PresetName] | None = None) -> PresetName:
+        """Store the current sound (edit buffer) into preset `n`, optionally renamed.
+
+        Writes the unit's flash. Refuses to replace a preset that isn't an
+        empty "USER" slot unless `overwrite` (saving over the source preset
+        itself counts as overwriting too)."""
+        if not 0 <= n < PRESETS:
+            raise ValueError(f"preset must be 0..{PRESETS - 1}")
+        names = names if names is not None else self.read_names()
+        if not names[n].empty and not overwrite:
+            raise ValueError(f"{preset_name(n)} holds \"{names[n].name}\": "
+                             "pass overwrite=True to replace it")
+        name = check_name(name) if name is not None else names[-1].name
+        encoded = name.encode("ascii")
+        echo = bytes([MSG_NAME, EDIT_BUFFER])
+        self._exchange(MSG_NAME, EDIT_BUFFER, *encoded,
+                       until=lambda p: p[:2] == echo and parse_name(p) == name)
+        stored = bytes([MSG_SETUP, SETUP_PRESET, n])
+        msgs = self._exchange(MSG_QUERY, QUERY_STORE, n, until=lambda p: p[:3] == stored,
+                              timeout=STORE_TIMEOUT)
+        return next((PresetName(n, parse_name(p), bool(p[2])) for p in msgs
+                     if p[0] == MSG_NAME and p[1] == n), PresetName(n, name, False))
 
     def select_preset(self, n: int) -> dict[int, int]:
         """Load a stored preset, discarding unsaved edits. Returns the changed parameters."""
@@ -220,5 +267,5 @@ class Torpedo:
         return {p[1]: p[2] for p in msgs if p[0] == MSG_PARAM}
 
     def discard(self) -> dict[int, int]:
-        """Drop unsaved edits by reloading the current preset."""
-        return self.select_preset(self.preset & ~PRESET_MODIFIED)
+        """Drop unsaved edits by reloading the preset they came from."""
+        return self.select_preset(self.source) if self.edited else {}

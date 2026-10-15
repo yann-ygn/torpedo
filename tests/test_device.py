@@ -2,7 +2,7 @@ import pytest
 
 from torpedo.device import IgnoredWrite, Torpedo
 from torpedo.fake import A001, FakeHid
-from torpedo.protocol import MSG_POLL, PARAMS, PRESET_MODIFIED, SETUP, find_param
+from torpedo.protocol import EDIT_BUFFER, MSG_POLL, PARAMS, SETUP, find_param
 
 CONTOUR = find_param("arcade_contour")
 PARAMS_ALL = frozenset(range(len(PARAMS)))
@@ -30,7 +30,7 @@ def test_reads(torpedo):
 def test_set_param_reports_linked_changes_and_modified_flag(torpedo):
     assert torpedo.set_param(CONTOUR, 22) == {0x13: 22, 0x17: 22, 0x20: 22}
     assert torpedo.params[0x20] == 22
-    assert torpedo.preset == PRESET_MODIFIED | 0
+    assert torpedo.preset == EDIT_BUFFER and torpedo.source == 0
     assert torpedo.dev.queue == type(torpedo.dev.queue)(), "exchange drained the queue"
 
 
@@ -113,6 +113,44 @@ def test_select_ir(torpedo):
     for bad in ((2, 0), (0, 86)):
         with pytest.raises(ValueError):
             torpedo.select_ir(*bad, irs)
+
+
+def test_discard_returns_to_the_edited_preset(torpedo):
+    """SETUP_PRESET becomes 0x80 once edited; the source preset is in SETUP_PRESET_SOURCE."""
+    torpedo.select_preset(1)
+    torpedo.set_param(CONTOUR, 10)
+    assert (torpedo.preset, torpedo.source, torpedo.edited) == (EDIT_BUFFER, 1, True)
+    torpedo.discard()
+    assert torpedo.preset == 1 and torpedo.params[0x20] == 30
+    assert torpedo.discard() == {}, "nothing to discard"
+
+
+def test_read_names(torpedo):
+    names = torpedo.read_names()
+    assert len(names) == 129 and names[-1].index == EDIT_BUFFER
+    assert names[0].name == "BDELUXE 1 RBN" and names[0].arcade
+    assert names[75].empty and not names[74].empty
+
+
+def test_save_into_empty_slot(torpedo):
+    torpedo.set_param(CONTOUR, 22)
+    saved = torpedo.save(75, "testcap")
+    assert (saved.index, saved.name) == (75, "TESTCAP")
+    assert torpedo.dev.stores == [75] and torpedo.preset == 75 and not torpedo.edited
+    assert torpedo.dev.presets[75][0x20] == 22 and torpedo.read_names()[75].name == "TESTCAP"
+
+
+def test_save_refuses_to_overwrite(torpedo):
+    with pytest.raises(ValueError, match="holds"):
+        torpedo.save(3)
+    for bad in ("", "x" * 26, "lower-case!"):
+        with pytest.raises(ValueError):
+            torpedo.save(75, bad)
+    with pytest.raises(ValueError):
+        torpedo.save(128)
+    assert torpedo.dev.stores == [], "nothing written"
+    torpedo.save(3, overwrite=True)
+    assert torpedo.dev.stores == [3] and torpedo.read_names()[3].name == "BDELUXE 1 RBN"
 
 
 def test_select_preset(torpedo):

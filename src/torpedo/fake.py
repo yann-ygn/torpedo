@@ -8,10 +8,11 @@ capture raise, so tests also check that nothing unknown gets sent.
 
 from collections import deque
 
-from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, MIC_SLOT, MSG_CAB, MSG_EMPTY,
-                       MSG_INFO, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP, PRESET_MODE,
-                       PRESET_MODIFIED, PRESETS, QUERY_BANK, QUERY_INFO, QUERY_PARAMS,
-                       QUERY_SETUP, REPORT_LEN, SETUP_PRESET)
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, MIC_SLOT, MSG_CAB,
+                       MSG_EMPTY, MSG_INFO, MSG_NAME, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP,
+                       NAMES_ALL, NAMES_EDIT_BUFFER, PRESET_MODE, PRESETS, QUERY_BANK, QUERY_INFO,
+                       QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP, QUERY_STORE, REPORT_LEN,
+                       SETUP_PRESET, SETUP_PRESET_SOURCE)
 
 # Read from the real unit (preset A001 and setup, 2026-10-15)
 A001 = [0, 5, 0, 127, 127, 1, 1, 0, 16, 0, 0, 0, 0, 5, 0, 17, 1, 1, 0, 21, 20, 20, 20, 21, 87,
@@ -32,6 +33,8 @@ CABS = {0: ("Blonde 63", "Two Notes Audio Engineering", TWO_NOTES_MICS),
                                                  "Dyn 57", "Dyn 7b", "Dyn Bass112", "Dyn i5"]),
         0x12: ("DarkPrinz", "Black Bear Studio", ["Cnd 840", "Cnd BLX414", "Rbn 160", "Dyn 421",
                                                   "Dyn 57", "Dyn 906", "Dyn Bass20", "Dyn TG201"])}
+PRESET_NAMES = (["BDELUXE 1 RBN", "BDELUXE 1 DYN421"] + [f"FACTORY {i}" for i in range(2, 75)]
+                + ["USER"] * 53)  # A076..A128 are empty user slots, as on the unit
 BANK0_SIZE = 32
 ML_IRS = [f"ML-FRMN-{i:02d}" for i in range(85)] + ["ML-FRMN-V30-906-E"]  # bank 1, 86 IRs
 
@@ -59,6 +62,9 @@ class FakeHid:
         self.presets[1][0x1A] = 3  # reverb room
         self.params = list(self.presets[0])
         self.setup = list(SETUP_VALUES)
+        self.names = list(PRESET_NAMES)
+        self.buffer_name = self.names[0]
+        self.stores: list[int] = []  # presets written to "flash"
         self.queue: deque[list[int]] = deque()
         self.replies = 0  # IN reports owed: one per OUT report
         self.sent: list[bytes] = []  # every OUT report, without the report ID
@@ -108,6 +114,15 @@ class FakeHid:
             self._set_param(idx, val)
         elif cmd == MSG_SETUP and idx == SETUP_PRESET and val < PRESETS:
             self._select(val)
+        elif cmd == MSG_QUERY and idx == QUERY_NAMES and val in (NAMES_ALL, NAMES_EDIT_BUFFER):
+            for i in (range(PRESETS) if val == NAMES_ALL else ()):
+                self.queue.append(self._name_report(i))
+            self.queue.append(self._name_report(EDIT_BUFFER))
+        elif cmd == MSG_NAME and idx == EDIT_BUFFER:
+            self.buffer_name = b[2:].split(bytes(1))[0].decode()
+            self.queue.append(self._name_report(EDIT_BUFFER))
+        elif cmd == MSG_QUERY and idx == QUERY_STORE and val < PRESETS:
+            self._store(val)
         else:
             raise AssertionError(f"fake: command never observed on the real device: {b[:4].hex(' ')}")
 
@@ -120,9 +135,11 @@ class FakeHid:
             self.queue.append(report(MSG_PARAM, i, v))
         self.params[idx] = val
         self.queue.append(report(MSG_PARAM, idx, val))
-        if not self.setup[SETUP_PRESET] & PRESET_MODIFIED:
-            self.setup[SETUP_PRESET] |= PRESET_MODIFIED
-            self.queue.append(report(MSG_SETUP, SETUP_PRESET, self.setup[SETUP_PRESET]))
+        if self.setup[SETUP_PRESET] != EDIT_BUFFER:
+            self.setup[SETUP_PRESET_SOURCE] = self.setup[SETUP_PRESET]
+            self.setup[SETUP_PRESET] = EDIT_BUFFER
+            self.queue.append(report(MSG_SETUP, SETUP_PRESET, EDIT_BUFFER))
+            self.queue.append(report(MSG_SETUP, SETUP_PRESET_SOURCE, self.setup[SETUP_PRESET_SOURCE]))
 
     def _select(self, n: int):
         if self.setup[SETUP_PRESET] == n:
@@ -130,5 +147,19 @@ class FakeHid:
         new = self.presets[n]
         self.queue.extend(report(MSG_PARAM, i, v) for i, v in enumerate(new) if v != self.params[i])
         self.params = list(new)
-        self.setup[SETUP_PRESET] = n
+        self.buffer_name = self.names[n]
+        self.setup[SETUP_PRESET] = self.setup[SETUP_PRESET_SOURCE] = n
         self.queue.append(report(MSG_SETUP, SETUP_PRESET, n))
+
+    def _name_report(self, idx: int) -> list[int]:
+        name = self.buffer_name if idx == EDIT_BUFFER else self.names[idx]
+        arcade = (self.params if idx == EDIT_BUFFER else self.presets[idx])[PRESET_MODE] == ARCADE
+        return report(MSG_NAME, idx, int(arcade), *name.encode(), 0)
+
+    def _store(self, n: int):
+        self.presets[n] = list(self.params)
+        self.names[n] = self.buffer_name
+        self.stores.append(n)
+        self.setup[SETUP_PRESET] = self.setup[SETUP_PRESET_SOURCE] = n
+        self.queue.extend([self._name_report(n), report(MSG_SETUP, SETUP_PRESET, n),
+                           report(MSG_SETUP, SETUP_PRESET_SOURCE, n), report(MSG_SETUP, 5, 0)])

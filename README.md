@@ -10,6 +10,10 @@ uv run torpedo get arcade_contour 0x1d       # by name (case-insensitive) or ind
 uv run torpedo set arcade_contour=22 reverb_room=3
 uv run torpedo discard                       # drop unsaved edits (reloads the preset)
 uv run torpedo preset 2                      # select A002 (or `preset A002`)
+uv run torpedo presets                       # preset names (--all: also the empty USER slots)
+uv run torpedo save --name "my crunch"       # store into the first empty USER slot
+uv run torpedo save A080 --overwrite         # replace a preset (refused without --overwrite)
+uv run torpedo rename "my crunch 2"          # rename the current preset (no unsaved edits)
 uv run torpedo setup                         # global setup values (read-only)
 uv run torpedo cabs                          # cab bank 0, * = current (--bank 1..4: IR banks)
 uv run torpedo cab                           # current cab and its mics
@@ -19,8 +23,10 @@ uv run torpedo ir 1 v30-906-e                # load an IR from the ML bank into 
 uv run torpedo --fake params                 # simulated device, nothing is sent
 ```
 
-`set` edits the current preset in the unit's memory only; nothing is saved
-(saving isn't implemented yet). Every value is range-checked before anything
+`set` edits the current preset in the unit's memory only, until `save`
+stores it. `save` writes into an empty "USER" slot unless told to
+`--overwrite`; names are uppercased, A-Z, 0-9 and spaces, up to 25
+characters (what the factory names use). Every value is range-checked before anything
 is sent, and in arcade mode the parameters the Torpedo would ignore are
 refused (see `src/torpedo/protocol.py`).
 

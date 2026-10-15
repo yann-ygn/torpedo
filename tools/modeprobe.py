@@ -7,14 +7,14 @@ parameters the device recomputed, then reload the preset again.
 Usage: uv run python tools/modeprobe.py
 """
 from torpedo.device import IgnoredWrite, Torpedo
-from torpedo.protocol import PARAMS, PRESET_MODE, PRESET_MODIFIED
+from torpedo.protocol import PARAMS, PRESET_MODE
 
 MODES = {"arcade": 1, "sim": 0, "ir": 2}
 mode_param = PARAMS[PRESET_MODE]
 
 with Torpedo() as t:
     t.timeout = 0.6
-    if t.preset & PRESET_MODIFIED:
+    if t.edited:
         raise SystemExit("the current preset has unsaved edits: probing would discard them")
     base = t.preset
     results = {}
