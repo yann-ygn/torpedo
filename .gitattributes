@@ -1,0 +1,2 @@
+# udev rules must have LF line endings on Linux
+linux/*.rules text eol=lf

@@ -1,0 +1,7 @@
+# Two notes Torpedo Live (0483:a334): let the logged-in user open its hidraw
+# node, so `torpedo` works without root. 0483 is ST's shared VID, hence the
+# manufacturer match.
+#   sudo cp linux/70-torpedo-live.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger
+# then replug the Torpedo.
+KERNEL=="hidraw*", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="a334", ATTRS{manufacturer}=="Two Notes Audio Engineering", TAG+="uaccess"

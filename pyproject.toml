@@ -1,0 +1,25 @@
+[project]
+name = "torpedo"
+version = "0.1.0"
+description = "Control for the Two notes Torpedo Live (reverse-engineered HID protocol)"
+readme = "README.md"
+authors = [
+    { name = "yann-ygn", email = "yann@ygn-effects.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "hidapi>=0.15.0",
+    "textual>=8.2.8",
+]
+
+[project.scripts]
+torpedo = "torpedo:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
