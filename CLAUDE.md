@@ -34,8 +34,10 @@ reference implementation.
 - `backup`/`restore` (src/torpedo/backup.py): JSON of all 128 presets +
   global settings, read by selecting each preset; restore stores only the
   presets that differ. Backups go in `backup/` and are committed (like klim).
-- Still to capture: user IR upload. Footswitch settings (setup 06–09) aren't
-  exposed by Remote.
+- IR download/upload/delete on bank 1 (`ir-get`/`ir-put`/`ir-delete`,
+  src/torpedo/ir.py, capture `2026-10-15-ir-upload.log`), tested on the unit
+  (bank 1 = the 86 ML IRs again). Not done: resampling, min-phase alignment.
+- Footswitch settings (setup 06–09) aren't exposed by Remote.
 
 ## Safety
 

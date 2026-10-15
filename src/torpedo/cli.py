@@ -1,11 +1,12 @@
 import argparse
+import os
 import sys
 
-from . import backup
-from .device import MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
-from .protocol import (ARCADE, ARCADE_EDITABLE, EMPTY_PRESET, IR, MODE_NAMES, PARAM_BY_NAME, PARAMS,
-                       PRESET_MODE, PRESETS, SETUP, SETUP_OPTIONS, Cab, find_param,
-                       preset_name)
+from . import backup, ir
+from .device import FOLDERS, MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
+from .protocol import (ARCADE, ARCADE_EDITABLE, EMPTY_PRESET, FOLDER_BANK_OFFSET, IR, MODE_NAMES,
+                       PARAM_BY_NAME, PARAMS, PRESET_MODE, PRESETS, SETUP, SETUP_OPTIONS, Cab,
+                       find_param, preset_name)
 
 
 def parse_assignment(s: str):
@@ -154,7 +155,7 @@ def cmd_setup(t: Torpedo, args):
             print(f"  {i:02x} {name:<24} {'?' if v is None else f'{v:#04x}'}")
 
 
-def find_cab(cabs: list[Cab], key: str) -> Cab:
+def find_cab(cabs: list[Cab], key: str, listing: str = "cabs") -> Cab:
     """By index (`18`, `0x12`), name (case-insensitive) or a unique part of the name.
     A number that isn't a valid index is matched against the names (`906`)."""
     try:
@@ -169,7 +170,7 @@ def find_cab(cabs: list[Cab], key: str) -> Cab:
     if len(found) == 1:
         return found[0]
     if not found:
-        raise ValueError(f"'{key}' not found (see `torpedo cabs [--bank N]`)")
+        raise ValueError(f"'{key}' not found (see `torpedo {listing}`)")
     names = ", ".join(c.name for c in found[:8]) + (f", ... ({len(found)} matches)" if len(found) > 8 else "")
     raise ValueError(f"'{key}' is ambiguous: {names}")
 
@@ -182,7 +183,7 @@ def cmd_ir(t: Torpedo, args):
     irs = t.read_irs()
     before = t.read_params()
     if args.ir is not None:
-        print_changes(before, t.select_ir(args.slot - 1, find_cab(irs, args.ir).index, irs))
+        print_changes(before, t.select_ir(args.slot - 1, find_cab(irs, args.ir, "irs").index, irs))
     mode = t.params[PRESET_MODE]
     for n, (wave, names) in enumerate(zip(WAVES, SLOT_PARAMS)):
         level, phase, mute = (t.params[PARAM_BY_NAME[p].index] for p in names)
@@ -196,10 +197,31 @@ def cmd_ir(t: Torpedo, args):
 
 
 def cmd_cabs(t: Torpedo, args):
-    current = t.read_params()[SPEAKER] if args.bank == 0 else None
-    for c in t.read_cabs(args.bank):
+    current = t.read_params()[SPEAKER]
+    for c in t.read_cabs():
         mark = "*" if c.index == current else " "
         print(f"{mark} {c.index:3d} {c.name:<28} {c.maker}")
+
+
+def cmd_irs(t: Torpedo, args):
+    """The IR bank, with the IR slots that use each IR. Banks 2-4 (user IR
+    folders 1-3) are listed too when they hold anything."""
+    params = t.read_params()
+    used = {}  # (folder, index) -> slots
+    for slot, (folder, wave) in enumerate(zip(FOLDERS, WAVES), 1):
+        used.setdefault((params[folder], params[wave]), []).append(str(slot))
+    for folder in range(4):
+        irs = t.read_irs(folder)
+        if not irs and folder:
+            continue
+        if folder:
+            print(f"folder {folder} (bank {folder + FOLDER_BANK_OFFSET}):")
+        for c in irs:
+            slots = used.get((folder, c.index), [])
+            mark = ("slot " + "+".join(slots)) if slots else ""
+            print(f"  {c.index:3d} {c.name:<28} {mark}")
+    note = "" if params[PRESET_MODE] == IR else f" (the preset is in {MODE_NAMES.get(params[PRESET_MODE], '?')} mode)"
+    print(f"IR mode's slots: `torpedo ir`{note}")
 
 
 def cmd_cab(t: Torpedo, args):
@@ -214,6 +236,37 @@ def cmd_cab(t: Torpedo, args):
         print(f"  mic {label}: {cab.mics[t.params[m]] or '-'} ({t.params[m]})"
               + ("  muted" if muted[m] else ""))
     print("  mics: " + ", ".join(f"{i} {m}" for i, m in enumerate(cab.mics) if m))
+
+
+def cmd_ir_get(t: Torpedo, args):
+    irs = t.read_irs()
+    entry = find_cab(irs, args.ir, "irs")
+    name, samples = t.download_ir(entry.index)
+    ir.write_wav(args.file, samples)
+    print(f"IR {entry.index} \"{name}\" ({len(samples)} samples, 48 kHz) -> {args.file}")
+
+
+def cmd_ir_put(t: Torpedo, args):
+    rate, values = ir.read_wav(args.file)
+    name = args.name or os.path.splitext(os.path.basename(args.file))[0]
+    if not 1 <= len(name) <= ir.NAME_MAX or not name.isascii() or not name.isprintable():
+        sys.exit(f"error: IR name must be 1..{ir.NAME_MAX} printable ASCII characters (--name)")
+    samples = ir.prepare(values, rate, args.length, args.align)
+    index = t.upload_ir(name, samples)
+    print(f"uploaded \"{name}\" as IR {index} ({args.length} ms, {args.align}); checked by reading it back")
+
+
+def cmd_ir_delete(t: Torpedo, args):
+    irs = t.read_irs()
+    matches = [c for c in irs if c.name == args.name]
+    if len(matches) != 1:
+        sys.exit(f"error: no IR named exactly \"{args.name}\" (see `torpedo irs`)")
+    index = matches[0].index
+    if index < len(irs) - 1 and not args.yes:
+        sys.exit(f"error: IRs {index + 1}..{len(irs) - 1} would move down one place, and presets "
+                 "using them would then point at the wrong IR; add --yes to delete anyway")
+    t.delete_ir(index, args.name)
+    print(f"deleted IR {index} \"{args.name}\"")
 
 
 def show_progress(what: str):
@@ -282,9 +335,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("assignments", nargs="*", type=parse_setup, metavar="NAME=VALUE")
     p.add_argument("--raw", action="store_true", help="also dump every setup value")
     p.set_defaults(func=cmd_setup)
-    p = sub.add_parser("cabs", help="list a cab bank (0 = the cabs `cab` selects)")
-    p.add_argument("--bank", type=int, choices=range(5), default=0)
-    p.set_defaults(func=cmd_cabs)
+    sub.add_parser("cabs", help="list the cabs (* = current)").set_defaults(func=cmd_cabs)
+    sub.add_parser("irs", help="list the IRs, with the IR mode slots using them").set_defaults(func=cmd_irs)
     p = sub.add_parser("cab", help="show or select the cab (keeps the same mic when it can)")
     p.add_argument("cab", nargs="?", metavar="CAB", help="index, name or part of the name")
     p.set_defaults(func=cmd_cab)
@@ -310,6 +362,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-setup", action="store_true", help="leave the global settings alone")
     p.add_argument("--apply", action="store_true", help="really write (stores presets to flash)")
     p.set_defaults(func=cmd_restore)
+    p = sub.add_parser("ir-get", help="download an IR from the IR bank to a WAV file")
+    p.add_argument("ir", metavar="IR", help="index, name or part of the name")
+    p.add_argument("file")
+    p.set_defaults(func=cmd_ir_get)
+    p = sub.add_parser("ir-put", help="upload a 48 kHz WAV to the end of the IR bank (flash write)")
+    p.add_argument("file")
+    p.add_argument("--name", help="IR name (default: the file name)")
+    p.add_argument("--length", type=int, choices=(20, 40), default=20, help="ms (default 20)")
+    p.add_argument("--align", choices=("original", "min-latency"), default="original",
+                   help="min-latency drops the silence before the onset")
+    p.set_defaults(func=cmd_ir_put)
+    p = sub.add_parser("ir-delete", help="delete an IR from the IR bank (flash write)")
+    p.add_argument("name", help="the IR's exact name")
+    p.add_argument("--yes", action="store_true", help="also when IRs after it get renumbered")
+    p.set_defaults(func=cmd_ir_delete)
     p = sub.add_parser("rename", help="rename the current preset (must have no unsaved edits)")
     p.add_argument("name")
     p.set_defaults(func=cmd_rename)

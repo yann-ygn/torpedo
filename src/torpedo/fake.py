@@ -8,11 +8,14 @@ capture raise, so tests also check that nothing unknown gets sent.
 
 from collections import deque
 
-from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, MIC_SLOT, MSG_CAB,
-                       MSG_EMPTY, MSG_INFO, MSG_NAME, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP,
+from . import ir
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, IR_ACK, IR_BANK, IR_STATUS,
+                       MIC_SLOT, MSG_CAB, MSG_EMPTY, MSG_INFO, MSG_IR_DATA, MSG_IR_END,
+                       MSG_IR_HEADER, MSG_NAME, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP,
                        NAMES_ALL, NAMES_EDIT_BUFFER, PRESET_MODE, PRESETS, QUERY_BANK, QUERY_INFO,
-                       QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP, QUERY_STORE, REPORT_LEN,
-                       SETUP_OPTIONS, SETUP_PRESET, SETUP_PRESET_SOURCE)
+                       QUERY_IR, QUERY_IR_COMMIT, QUERY_IR_DELETE, QUERY_NAMES, QUERY_PARAMS,
+                       QUERY_SETUP, QUERY_STORE, REPORT_LEN, SETUP_OPTIONS, SETUP_PRESET,
+                       SETUP_PRESET_SOURCE)
 
 # Read from the real unit (preset A001 and setup, 2026-10-15)
 A001 = [0, 5, 0, 127, 127, 1, 1, 0, 16, 0, 0, 0, 0, 5, 0, 17, 1, 1, 0, 21, 20, 20, 20, 21, 87,
@@ -38,6 +41,13 @@ PRESET_NAMES = (["BDELUXE 1 RBN", "BDELUXE 1 DYN421"] + [f"FACTORY {i}" for i in
                 + ["USER"] * 53)  # A076..A128 are empty user slots, as on the unit
 BANK0_SIZE = 32
 ML_IRS = [f"ML-FRMN-{i:02d}" for i in range(85)] + ["ML-FRMN-V30-906-E"]  # bank 1, 86 IRs
+
+
+def fake_ir(seed: int) -> list[int]:
+    """A deterministic decaying IR, full scale like the unit stores them."""
+    values = [(-1) ** k * 0.97 ** k * (1 + (k * seed) % 7) / 7 for k in range(ir.LENGTHS[20])]
+    peak = max(map(abs, values))
+    return [round(v / peak * ir.FULL_SCALE) for v in values]
 
 
 def report(*payload: int) -> list[int]:
@@ -66,6 +76,8 @@ class FakeHid:
         self.names = list(PRESET_NAMES)
         self.buffer_name = self.names[0]
         self.stores: list[int] = []  # presets written to "flash"
+        self.irs = [(name, fake_ir(i)) for i, name in enumerate(ML_IRS)]  # bank 1
+        self.upload: list[bytes] = []
         self.queue: deque[list[int]] = deque()
         self.replies = 0  # IN reports owed: one per OUT report
         self.sent: list[bytes] = []  # every OUT report, without the report ID
@@ -107,10 +119,34 @@ class FakeHid:
                     name, maker, mics = CABS.get(i, (f"Cab {i}", "Two Notes Audio Engineering",
                                                      TWO_NOTES_MICS))
                     self.queue.extend(cab_reports(0, i, name, maker, mics))
-            elif val == 1:  # ML IRs: only parts 0-1
-                for i, name in enumerate(ML_IRS):
+            elif val == IR_BANK:  # IRs: only parts 0-1
+                for i, (name, _) in enumerate(self.irs):
                     self.queue.extend(cab_reports(1, i, name, "", [""] * 8)[:2])
             self.queue.append(report(MSG_QUERY, BANK_END, val, 3, *b"Noise Factory"))
+        elif cmd == MSG_QUERY and idx == QUERY_IR and val == IR_BANK and b[3] < len(self.irs):
+            name, samples = self.irs[b[3]]
+            stream = ir.pack_samples(samples)
+            self.queue.extend(report(*h) for h in ir.headers(b[3], name, stream, len(samples), upload=False))
+            self.queue.extend(report(*c) for c in ir.chunks(stream))
+            self.queue.append(report(MSG_IR_END))
+        elif cmd == MSG_IR_HEADER:
+            self.upload = self.upload + [b] if len(self.upload) == 1 else [b]
+            if len(self.upload) == 2:
+                self.queue.append(report(MSG_QUERY, IR_ACK))
+        elif cmd == MSG_IR_DATA and len(self.upload) >= 2:
+            self.upload.append(b)
+            self.queue.append(report(MSG_QUERY, IR_ACK, 5, len(self.upload) // 3, 0x10))
+        elif cmd == MSG_IR_END and len(self.upload) >= 2:
+            h0, h1, *data = self.upload
+            assert h0[8] == len(self.irs) + 1, "upload slot = bank size + 1"
+            self.irs.append(ir.parse_transfer(h0, h1, data, upload=True))  # checks checksums
+            self.upload = []
+            self.queue.append(report(MSG_QUERY, IR_STATUS, 5, 0x10, 0x10))
+        elif cmd == MSG_QUERY and idx == QUERY_IR_DELETE and b[3] == IR_BANK and val < len(self.irs):
+            del self.irs[val]
+            self.queue.append(report(MSG_QUERY, IR_STATUS, 0))
+        elif cmd == MSG_QUERY and idx == QUERY_IR_COMMIT:
+            self.queue.append(report(MSG_QUERY, IR_STATUS, 0))
         elif cmd == MSG_PARAM and idx < len(self.params):
             self._set_param(idx, val)
         elif cmd == MSG_SETUP and idx == SETUP_PRESET and val < PRESETS:

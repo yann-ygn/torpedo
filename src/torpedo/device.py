@@ -11,9 +11,11 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from . import ir
 from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, FOLDER_BANK_OFFSET,
-                       HEARTBEAT, MSG_CAB, MSG_EMPTY, MSG_INFO, MSG_NAME, MSG_PARAM, MSG_POLL,
-                       MSG_QUERY, MSG_SETUP, NAMES_ALL, PARAM_BY_NAME, PARAMS, PRESET_MODE,
+                       HEARTBEAT, IR_ACK, IR_BANK, IR_STATUS, MSG_CAB, MSG_EMPTY, MSG_INFO,
+                       MSG_IR_DATA, MSG_IR_END, MSG_IR_HEADER, MSG_NAME, MSG_PARAM, MSG_POLL,
+                       MSG_QUERY, MSG_SETUP, QUERY_IR, QUERY_IR_COMMIT, QUERY_IR_DELETE, NAMES_ALL, PARAM_BY_NAME, PARAMS, PRESET_MODE,
                        PRESETS, QUERY_BANK, QUERY_INFO, QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP,
                        QUERY_STORE, REPORT_LEN, SETUP, SETUP_PRESET, SETUP_PRESET_SOURCE, Cab,
                        Param, PresetName, SETUP_OPTIONS, SetupOption, check_name, parse_cab,
@@ -84,11 +86,12 @@ class Torpedo:
         self.dev.write([0, *payload] + [0] * (REPORT_LEN - len(payload)))
 
     def _exchange(self, *cmd: int, until: Callable[[bytes], bool] | None = None,
-                  timeout: float | None = None) -> list[bytes]:
+                  timeout: float | None = None, drain: bool = True) -> list[bytes]:
         """Send `cmd`, then poll until `until` matched a message (if given) and the queue is empty.
 
         The reply to a write may lag behind it, so an empty queue only ends the
-        exchange once `until` has matched.
+        exchange once `until` has matched. With drain=False it ends right at the
+        match (IR chunks: Remote sends the next one as soon as `04 70` arrives).
         """
         self._send(*cmd)
         msgs, done = [], until is None
@@ -102,6 +105,8 @@ class Torpedo:
                 self._absorb(p)
                 msgs.append(p)
                 done = done or until(p)
+                if done and not drain:
+                    return msgs
             if time.monotonic() > deadline:
                 raise TimeoutError(f"no reply to {bytes(cmd).hex(' ')}")
             self._send(MSG_POLL)
@@ -271,6 +276,61 @@ class Torpedo:
     def discard(self) -> dict[int, int]:
         """Drop unsaved edits by reloading the preset they came from."""
         return self.select_preset(self.source) if self.edited else {}
+
+    # --- IRs (bank 1) ---------------------------------------------------------
+
+    def download_ir(self, index: int, bank: int = IR_BANK) -> tuple[str, list[int]]:
+        """(name, samples) of an IR; samples are 24-bit ints at 48 kHz."""
+        msgs = self._exchange(MSG_QUERY, QUERY_IR, bank, index,
+                              until=lambda p: p[0] == MSG_IR_END)
+        headers = [m for m in msgs if m[0] == MSG_IR_HEADER]
+        data = [m for m in msgs if m[0] == MSG_IR_DATA]
+        if len(headers) != 2:
+            raise RuntimeError(f"unexpected IR download ({len(headers)} headers)")
+        return ir.parse_transfer(headers[0], headers[1], data)
+
+    def _ir_commit(self):
+        done = bytes([MSG_QUERY, IR_STATUS, 0])
+        self._exchange(MSG_QUERY, QUERY_IR_COMMIT, until=lambda p: p[:3] == done,
+                       timeout=STORE_TIMEOUT)
+
+    def upload_ir(self, name: str, samples: list[int]) -> int:
+        """Append an IR to bank 1 (a flash write). Returns its index, after
+        reading it back to check it."""
+        irs = self.read_cabs(IR_BANK)
+        if any(c.name == name for c in irs):
+            raise ValueError(f"bank {IR_BANK} already has an IR named {name}")
+        stream = ir.pack_samples(samples)
+        h0, h1 = ir.headers(len(irs) + 1, name, stream, len(samples), upload=True)
+        ack = bytes([MSG_QUERY, IR_ACK])
+        self._send(*h0)
+        self._exchange(*h1, until=lambda p: p[:2] == ack, timeout=STORE_TIMEOUT)
+        for chunk in ir.chunks(stream):
+            self._exchange(*chunk, until=lambda p: p[:2] == ack, drain=False)
+        self._exchange(MSG_IR_END, until=lambda p: p[:2] == bytes([MSG_QUERY, IR_STATUS]),
+                       timeout=STORE_TIMEOUT)
+        self._ir_commit()
+        after = self.read_cabs(IR_BANK)
+        index = len(after) - 1
+        if len(after) != len(irs) + 1 or after[index].name != name:
+            raise RuntimeError("the upload didn't show up at the end of the bank")
+        if self.download_ir(index)[1] != samples:
+            raise RuntimeError(f"IR {index} reads back different from what was sent")
+        return index
+
+    def delete_ir(self, index: int, name: str):
+        """Delete IR `index` of bank 1 (a flash write), checking it is `name`.
+        The IRs after it move down one place."""
+        irs = self.read_cabs(IR_BANK)
+        if not 0 <= index < len(irs) or irs[index].name != name:
+            raise ValueError(f"IR {index} of bank {IR_BANK} isn't \"{name}\"")
+        status = bytes([MSG_QUERY, IR_STATUS, 0])
+        self._exchange(MSG_QUERY, QUERY_IR_DELETE, index, IR_BANK,
+                       until=lambda p: p[:3] == status, timeout=STORE_TIMEOUT)
+        self._ir_commit()
+        expected = [c.name for c in irs[:index] + irs[index + 1:]]
+        if [c.name for c in self.read_cabs(IR_BANK)] != expected:
+            raise RuntimeError("the IR bank doesn't look as expected after the delete")
 
     def set_setup(self, option: SetupOption, value: int) -> bool:
         """Change a global setting (stored by the unit, not part of a preset).

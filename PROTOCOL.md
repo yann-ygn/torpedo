@@ -52,7 +52,7 @@ polling. Without polling, the reply to a write may also be a bare `05`
 | `04 08 <bank>` | N × `06 bank idx part …`, then `04 10 bank …` | cabinet bank contents (layout below). Bank 0 = 32 cabs × 4 parts (Two notes + partners: Black Bear, Mirador, Suhr/Celestion…), bank 1 = 86 IRs × 2 parts ("ML-FRMN-FREEDOM"…), banks 2–4 = user IR banks, no records on this unit (only the `04 10` end marker) |
 | `04 09 81` | 129 × `03 idx arcade name` | preset names: presets 0–127 (A001–A128), then the edit buffer (idx 0x80). `arcade` = 1 when the preset is in arcade mode: it follows PRESET_MODE (the edit buffer's flips as soon as the mode changes) and is stored with the preset, which is how Remote marks presets as arcade or simulation. Empty user slots are named "USER" (A076–A109 and A116–A118 here). The factory simulation presets are A110–A115 ("RECORDING …") and A119–A128 ("… 2MICS"). `04 09 80` returns the edit buffer's entry only |
 | `04 33`, `04 34` | `04 0f slot name` + 3 × `04 31 slot n` | names of the IRs loaded in mic slot 0 / 1. Slot 0 follows SIMUHP_SPEAKER (A001: "LuxTweeDe" = bank 0 #16); slot 1 said "Brit VintC" with mic B muted *(?)* |
-| `04 15 <bank> <idx>` | `6e …` ×2, `6f …` ×~45, `70 …` | waveform of an IR, for the display (Remote sends `04 15 01 55` after loading ML IR 85 into a slot); `6e` = header with the IR name, `6f` = data chunks, `70` = end |
+| `04 15 <bank> <idx>` | `6e …` ×2, `6f …` ×45, `70` | the IR's data (Remote uses it for the waveform display and for "download"): see "IR transfers" |
 
 ### Cab records (`06 bank idx part …`)
 
@@ -157,15 +157,50 @@ edited, with the source in SETUP_PRESET_SOURCE (editing A067 gave `0c 03 80`,
 after a store and 1 after the next edit, but also read 1 for an unedited
 A001, so it isn't used.
 
-Not captured yet: user IR upload (to a bank, as opposed to the preview slot),
-footswitch/MIDI setup changes.
+### IR transfers (2026-10-15-ir-upload capture)
+
+The IR bank is bank 1 (IR folder 0): the 86 "ML-FRMN-…" IRs, then uploads.
+An IR is 896 samples (20 ms) or 1792 (40 ms) at 48 kHz, signed 24-bit LE,
+normalized to full scale (0x7FFFFF). Remote's WAV export is the same as float
+at half scale (peak 0.5). `src/torpedo/ir.py` builds and parses all of this;
+it reproduces Remote's uploads byte for byte given the same samples.
+
+Transfer, both directions:
+
+| report | content |
+|---|---|
+| `6e` #1 | `6e 00 06 00 00`, stream length (2 bytes BE; +0x60 for an upload), `01`, index, `03 60`, name (from byte 11, NUL-padded) |
+| `6e` #2 | `6e 00 06 00 00 00 00 00`, "Generic wave file" (32 bytes from byte 8), length in 20 ms units (`01`/`02`), Fletcher-8 `a`, `b` of the stream, then sum8 of bytes 9.. of `6e` #1 and bytes 8..42 of this one |
+| `6f` × N | 20 samples (60 bytes) each, then 3 unused bytes; N = 45 or 90 |
+| `70` | end |
+
+The stream is the sample bytes followed by a 4-byte trailer: 16-bit byte sum,
+then 16-bit sum of the running sums (Fletcher-32 on bytes), both big-endian.
+
+- Download: `04 15 1 idx` (0-based). The device sends the whole transfer.
+- Upload: send both `6e` (index = bank size + 1, i.e. append), wait for `04 70`
+  (~0.8 s), then each `6f` after the previous one's `04 70` (`08 01 05 nn 10`
+  reports progress in between), then `70` → `04 0d …`, then `04 0e` → `04 0d
+  00` ~1.1 s later (flash write done).
+- Delete: `04 6c idx 1` → `04 0d 00`, then `04 0e` → `04 0d 00`. The IRs after
+  it move down one place, so presets pointing at them by index then point at
+  the next IR.
+
+What Remote does to a file before uploading (seen with synthetic test IRs,
+`captures/irtest/`): resamples to 48 kHz, applies the "Align IR" choice
+(Original keeps the pre-onset silence, "Min IR latency" drops it, "Min phase"
+converts to minimum phase: peak at sample 4 like the ML IRs), cuts or pads to
+20/40 ms and peak-normalizes. Its samples differ from an exact normalization
+by up to ±1.6 LSB (float processing).
+
+Not captured yet: footswitch settings (not exposed by Remote).
 
 ## Do not send
 
 From the RTTI: `RebootableCommand<0x03>`, `<0x04>`, `<0x27>`, `UpdateFirmwareCommand`,
 `SecureEraseCommand`, `ClearPresetsCommand`, `ClearBankCommand`, factory reset.
 Their wire IDs are not mapped yet, so never send a command type that has not
-been observed in a capture. Writes seen so far: `01`, `03 80`, `04 73` (flash), `0c 00`, `0c 01`, `0c 03`, `6e`, `6f`, `70`, `7e`.
+been observed in a capture. Writes seen so far: `01`, `03 80`, `04 73` (flash), `04 6c` + `04 0e` (IR delete, flash), `0c 00`–`0c 0e` setup, `6e`/`6f`/`70` (IR upload: flash for bank 1, preview slot otherwise), `7e`.
 
 Command IDs present in the exe (MSVC template args, decoded): `Command<>` 0x01,
 0x03, 0x04, 0x08, 0x09, 0x0A, 0x0B, 0x0E, 0x0F, 0x16, 0x27, 0x31, 0x38, 0x3A,

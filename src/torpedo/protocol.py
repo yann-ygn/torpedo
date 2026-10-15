@@ -48,6 +48,16 @@ NAMES_ALL, NAMES_EDIT_BUFFER = 0x81, 0x80
 # answers ~2 s later: 03 n <name>, 0c 03 n, 0c 04 n, 0c 05 00.
 QUERY_STORE = 0x73
 EMPTY_PRESET = "USER"
+
+# IR transfers (src/torpedo/ir.py has the format). Only bank 1 (IR folder 0)
+# has been seen taking uploads and deletes.
+MSG_IR_HEADER, MSG_IR_DATA, MSG_IR_END = 0x6E, 0x6F, 0x70
+QUERY_IR = 0x15  # 04 15 bank idx: download an IR (6e, 6e, 6f..., 70)
+QUERY_IR_DELETE = 0x6C  # 04 6c idx bank: delete; later IRs move down one place
+QUERY_IR_COMMIT = 0x0E  # 04 0e after an upload or delete; answered 04 0d 00 ~1 s later
+IR_ACK = 0x70  # device: 04 70 after the headers and after each 6f
+IR_STATUS = 0x0D  # device: 04 0d ..., 04 0d 00 when done
+IR_BANK = 1
 NAME_MAX = 25  # longest factory name; the real limit is unknown
 NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")  # seen in factory names
 
