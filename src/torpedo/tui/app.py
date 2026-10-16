@@ -249,6 +249,7 @@ class TorpedoApp(App):
         yield Footer()
 
     def on_mount(self):
+        self.theme = "dracula"
         self.sub_title = self.base_subtitle
         self.device = DeviceThread(self)
         self.reconnect()

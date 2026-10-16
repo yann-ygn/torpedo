@@ -5,9 +5,9 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Label, Static
 
 from ..device import SPEAKER
-from ..layout import CAB, CHOICE, IR_SLOT, MIC, SLIDER, Control, Section, Values
+from ..layout import CAB, CHOICE, IR_SLOT, MIC, SLIDER, Control, Section, Values, controls
 from ..protocol import PARAMS, Cab
-from .widgets import Choice, Slider, Value
+from .widgets import Choice, Slider, Value, slider_label_width
 
 
 def make_widget(c: Control, **kw) -> Value:
@@ -40,9 +40,17 @@ class Editor(Vertical):
         self.alts: dict[Value, Static] = {}
         if readonly:
             self.add_class("readonly")
+        # sliders with end words (arcade's cold ... hot) share one width for
+        # those words and the value, so their bars line up
+        ended = [c for c in controls(layout) if c.kind == SLIDER and any(c.ends)]
+        self.ends_width = tuple(max((len(c.ends[i]) for c in ended), default=0) for i in (0, 1))
+        self.label_width = max((slider_label_width(PARAMS[c.index].lo, PARAMS[c.index].hi, c.fmt)
+                                for c in ended), default=0)
 
     def _widget(self, c: Control, row: int, col: int, classes: str | None = None) -> Value:
-        w = make_widget(c, classes=classes)
+        pad = ({"ends_width": self.ends_width, "label_width": self.label_width}
+               if c.kind == SLIDER and any(c.ends) else {})
+        w = make_widget(c, classes=classes, **pad)
         w.grid = (row, col)
         w.disabled = self.readonly
         return w

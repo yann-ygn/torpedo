@@ -70,6 +70,10 @@ class Value(Widget, can_focus=True):
         self.set_timer(1.0, lambda: self.remove_class("-changed"))
 
 
+def slider_label_width(lo: int, hi: int, fmt=str) -> int:
+    return max(len(fmt(v)) for v in range(lo, hi + 1))
+
+
 class Slider(Value):
     """Bar + value: arrows step (shift: x10), Home/End, Enter types a number, mouse drags."""
 
@@ -92,18 +96,21 @@ class Slider(Value):
     ]
 
     def __init__(self, lo: int, hi: int, tag=None, *, fmt=str, ends: tuple[str, str] = ("", ""),
-                 **kw):
+                 ends_width: tuple[int, int] = (0, 0), label_width: int = 0, **kw):
+        """`ends_width` and `label_width` pad the end words and the value, so that
+        sliders stacked in a column line up."""
         super().__init__(tag, **kw)
         self.lo, self.hi, self.fmt, self.ends = lo, hi, fmt, ends
-        self.label_width = max(len(fmt(v)) for v in range(lo, hi + 1))
+        self.ends_width = tuple(max(len(e), w) for e, w in zip(ends, ends_width))
+        self.label_width = max(label_width, slider_label_width(lo, hi, fmt))
         self._dragging = False
 
     def clamp(self, value: int) -> int:
         return max(self.lo, min(self.hi, value))
 
     def _ends(self) -> tuple[str, str]:
-        a, b = self.ends
-        return (f"{a} " if a else "", f" {b}" if b else "")
+        (a, b), (wa, wb) = self.ends, self.ends_width
+        return (f"{a:<{wa}} " if wa else "", f" {b:<{wb}}" if wb else "")
 
     def _bar_width(self) -> int:
         a, b = self._ends()
