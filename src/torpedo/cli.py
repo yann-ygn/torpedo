@@ -399,12 +399,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("ir", metavar="IR", help="index, name or part of the name")
     p.add_argument("file")
     p.set_defaults(func=cmd_ir_get)
-    p = sub.add_parser("ir-put", help="upload a 48 kHz WAV to the end of the IR bank (flash write)")
+    p = sub.add_parser("ir-put", help="upload a WAV to the end of the IR bank (flash write)")
     p.add_argument("file")
     p.add_argument("--name", help="IR name (default: the file name)")
     p.add_argument("--length", type=int, choices=(20, 40), default=20, help="ms (default 20)")
-    p.add_argument("--align", choices=("original", "min-latency"), default="original",
-                   help="min-latency drops the silence before the onset")
+    p.add_argument("--align", choices=ir.ALIGNS, default="original",
+                   help="min-latency drops the silence before the onset; min-phase converts "
+                        "to minimum phase (peak at sample 4)")
     p.set_defaults(func=cmd_ir_put)
     p = sub.add_parser("ir-delete", help="delete an IR from the IR bank (flash write)")
     p.add_argument("name", help="the IR's exact name")

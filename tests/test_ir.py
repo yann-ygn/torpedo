@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from torpedo import ir
@@ -36,11 +38,37 @@ def test_prepare():
     original = ir.prepare(values, rate, 20)
     assert len(original) == 896 and original[100] == 0 and original[101] != 0  # onset kept
     assert len(ir.prepare(values, rate, 40)) == 1792
-    rate44, values44 = ir.read_wav("captures/irtest/IRTEST-44K1.wav")
-    with pytest.raises(ValueError, match="48000"):
-        ir.prepare(values44, rate44)
-    with pytest.raises(ValueError, match="min phase"):
-        ir.prepare(values, rate, align="min-phase")
+    with pytest.raises(ValueError, match="align"):
+        ir.prepare(values, rate, align="min-fuss")
+
+
+def remote(name: str) -> list[int]:
+    """What Torpedo Remote uploaded (captures/irtest/README.md)."""
+    rate, values = ir.read_wav(f"captures/irtest/{name}")
+    return ir.prepare(values, rate)
+
+
+def test_min_phase_matches_remote():
+    rate, values = ir.read_wav("captures/irtest/IRTEST-48K.wav")
+    ours = ir.prepare(values, rate, align="min-phase")
+    assert max(range(len(ours)), key=lambda k: abs(ours[k])) == ir.MIN_PHASE_PEAK
+    # Remote's own normalization is off by up to 1.6 LSB (float processing)
+    assert max(abs(a - b) for a, b in zip(ours, remote("REMOTE-48K-MINPHASE.wav"))) <= 2
+
+
+def test_resampling_is_close_to_remote():
+    rate, values = ir.read_wav("captures/irtest/IRTEST-44K1.wav")
+    ours, theirs = ir.prepare(values, rate), remote("REMOTE-44K1.wav")
+    error = math.sqrt(sum((a - b) ** 2 for a, b in zip(ours, theirs)) / sum(b * b for b in theirs))
+    assert len(ours) == 896 and 20 * math.log10(error) < -70
+
+
+def test_downsampling_keeps_a_tone():
+    tone = [math.sin(2 * math.pi * 1000 * k / 96000) for k in range(960)]
+    out = ir.resample(tone, 96000)
+    assert len(out) == 480
+    expected = [math.sin(2 * math.pi * 1000 * k / 48000) for k in range(480)]
+    assert max(abs(a - b) for a, b in zip(out[40:-40], expected[40:-40])) < 1e-3
 
 
 def test_wav_round_trip(tmp_path):

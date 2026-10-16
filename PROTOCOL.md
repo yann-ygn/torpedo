@@ -215,7 +215,10 @@ What Remote does to a file before uploading (seen with synthetic test IRs,
 `captures/irtest/`): resamples to 48 kHz, applies the "Align IR" choice
 (Original keeps the pre-onset silence, "Min IR latency" drops it, "Min phase"
 converts to minimum phase: peak at sample 4 like the ML IRs), cuts or pads to
-20/40 ms and peak-normalizes. Its samples differ from an exact normalization
+20/40 ms and peak-normalizes. Min phase is the real-cepstrum fold of the whole
+file, then the samples before peak − 4 are dropped (IRTEST-48K: its peak
+landed at 11, Remote dropped 7; matches to 1.6 LSB). Remote's resampler is
+unknown; a 16-zero-crossing Kaiser sinc with a 0.9 cutoff comes within -76 dB. Its samples differ from an exact normalization
 by up to ±1.6 LSB (float processing).
 
 Not captured yet: footswitch settings (not exposed by Remote).

@@ -16,7 +16,7 @@ uv run torpedo save A080 --overwrite         # replace a preset (refused without
 uv run torpedo rename "my crunch 2"          # rename the current preset (no unsaved edits)
 uv run torpedo clear A080 --yes              # empty a preset like Remote's Delete (USER, default sound)
 uv run torpedo ir-get v30-906-e out.wav       # download an IR (float WAV, like Remote's export)
-uv run torpedo ir-put my-cab.wav --align min-latency   # upload a 48 kHz WAV to the IR bank
+uv run torpedo ir-put my-cab.wav --align min-phase     # upload a WAV (any rate) to the IR bank
 uv run torpedo ir-delete MY-CAB              # exact name; refuses if later IRs would renumber
 uv run torpedo export presets/crunch.json      # the current sound (unsaved edits included) to a preset file
 uv run torpedo export presets/a002.json A002   # or a stored preset
@@ -71,10 +71,13 @@ and the TUI reconnects by itself after a replug.
 
 IRs live in bank 1 (`torpedo irs`), after the 86 ML IRs, and are
 played by IR mode's two slots (`torpedo ir`). `ir-put` does what Torpedo
-Remote does to a 48 kHz file: optional trim of the silence before the onset
-(`--align min-latency`), cut or pad to 20 or 40 ms (`--length`), peak
-normalization, then reads the upload back to check it. Resampling and Remote's
-"Min phase" alignment aren't implemented. Deleting an IR moves the following
+Remote does to a file: resampling to 48 kHz, then `--align` (`original`;
+`min-latency` trims the silence before the onset; `min-phase` converts to
+minimum phase with the peak at sample 4, like the ML IRs), cut or pad to 20
+or 40 ms (`--length`), peak normalization, then it reads the upload back to
+check it. Min phase gives Remote's samples to within its own rounding;
+resampling is within -76 dB of Remote's (its filter isn't known). Plain
+Python, no extra dependency: min phase on a 1 s file takes a few seconds. Deleting an IR moves the following
 ones down a place, and presets using them would then play the next IR.
 
 ## Preset files

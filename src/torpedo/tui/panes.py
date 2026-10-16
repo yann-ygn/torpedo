@@ -54,7 +54,7 @@ class IrPane(TabPane):
                 yield Label("Folder", classes="field")
                 yield Input(str(Path.cwd()), id="ir-dir")
                 yield WavTree(Path.cwd(), id="ir-tree")
-                yield Label("Upload the selected WAV (48 kHz) to the end of the bank",
+                yield Label("Upload the selected WAV (resampled to 48 kHz) to the end of the bank",
                             classes="field")
                 yield Input(placeholder="IR name (default: file name)", id="ir-name")
                 with Horizontal(classes="opt"):
@@ -62,7 +62,7 @@ class IrPane(TabPane):
                     yield Choice(("20 ms", "40 ms"), id="ir-length")
                 with Horizontal(classes="opt"):
                     yield Label("Align")
-                    yield Choice(("original", "min-latency"), id="ir-align")
+                    yield Choice(ir.ALIGNS, id="ir-align")
                 with Horizontal(classes="buttons"):
                     yield Button("Upload", variant="primary", id="ir-upload")
 
@@ -143,7 +143,7 @@ class IrPane(TabPane):
                             severity="error")
             return
         length = (20, 40)[self.query_one("#ir-length", Choice).value]
-        align = ("original", "min-latency")[self.query_one("#ir-align", Choice).value]
+        align = ir.ALIGNS[self.query_one("#ir-align", Choice).value]
         path = self.file
         try:
             rate, values = ir.read_wav(path)

@@ -5,8 +5,14 @@ as signed 24-bit little-endian integers normalized to full scale. A transfer
 is two `6e` header reports, then `6f` reports carrying 20 samples each, then
 `70`. Torpedo Remote exports them as 32-bit float WAVs at half scale (peak
 0.5), which `write_wav` mimics.
+
+Uploads get Remote's processing (checked against what it sent for the
+captures/irtest files): resampling to 48 kHz, then the "Align IR" choice,
+then cut/pad and peak normalization. Plain Python: IRs are short.
 """
 
+import cmath
+import math
 import struct
 from array import array
 
@@ -16,6 +22,12 @@ FULL_SCALE = 2**23 - 1
 SAMPLES_PER_CHUNK = 20
 MAKER = "Generic wave file"
 NAME_MAX = 31  # the name field is 32 bytes, NUL-terminated (Remote's names were up to 17)
+ALIGNS = ("original", "min-latency", "min-phase")
+MIN_PHASE_PEAK = 4  # Remote's min-phase IRs peak there, like the ML IRs
+# Windowed-sinc resampler: zero crossings per side, Kaiser beta, cutoff as a
+# fraction of the lower Nyquist. Within -76 dB of Remote's 44.1 kHz upload
+# (Remote's own filter is unknown).
+SINC_HALF, KAISER_BETA, CUTOFF = 16, 8.0, 0.9
 
 
 def read_wav(path) -> tuple[int, list[float]]:
@@ -53,19 +65,108 @@ def write_wav(path, samples: list[int]):
         f.write(b"RIFF" + struct.pack("<I", len(body)) + body)
 
 
+def _bessel_i0(x: float) -> float:
+    total = term = 1.0
+    k = 1
+    while term > 1e-12 * total:
+        term *= (x / (2 * k)) ** 2
+        total += term
+        k += 1
+    return total
+
+
+WINDOW_STEPS = 4096  # Kaiser window table over 0..SINC_HALF, linearly interpolated
+_WINDOW = [_bessel_i0(KAISER_BETA * math.sqrt(max(0.0, 1 - (i / WINDOW_STEPS) ** 2)))
+           / _bessel_i0(KAISER_BETA) for i in range(WINDOW_STEPS + 2)]
+
+
+def resample(values: list[float], rate: int, to: int = RATE, count: int | None = None) -> list[float]:
+    """Band-limited resampling (Kaiser-windowed sinc); `count` output samples
+    (default: the whole signal)."""
+    ratio = to / rate
+    fc = min(1.0, ratio) * CUTOFF  # cutoff, relative to the input's Nyquist
+    span = SINC_HALF / fc  # input samples on each side
+    scale = WINDOW_STEPS / SINC_HALF
+    out = []
+    for m in range(math.ceil(len(values) * ratio) if count is None else count):
+        t = m / ratio
+        acc = 0.0
+        for k in range(max(math.ceil(t - span), 0), min(math.floor(t + span), len(values) - 1) + 1):
+            d = (t - k) * fc
+            if not d:
+                acc += values[k] * fc
+                continue
+            pos = abs(d) * scale
+            i = int(pos)
+            window = _WINDOW[i] + (_WINDOW[i + 1] - _WINDOW[i]) * (pos - i)
+            acc += values[k] * fc * window * math.sin(math.pi * d) / (math.pi * d)
+        out.append(acc)
+    return out
+
+
+def _fft(a: list[complex], inverse: bool = False) -> list[complex]:
+    """Iterative radix-2 FFT; len(a) must be a power of 2."""
+    n = len(a)
+    a = list(a)
+    j = 0
+    for i in range(1, n):  # bit-reversal permutation
+        bit = n >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j |= bit
+        if i < j:
+            a[i], a[j] = a[j], a[i]
+    size = 2
+    while size <= n:
+        half = size // 2
+        step = cmath.exp((2j if inverse else -2j) * math.pi / size)
+        twiddles = [step ** k for k in range(half)]
+        for start in range(0, n, size):
+            for k in range(half):
+                u, v = a[start + k], a[start + k + half] * twiddles[k]
+                a[start + k], a[start + k + half] = u + v, u - v
+        size *= 2
+    return [v / n for v in a] if inverse else a
+
+
+def minimum_phase(values: list[float]) -> list[float]:
+    """Same magnitude response, energy as early as possible (real cepstrum
+    folding). The FFT is 4x the IR or more: enough for Remote's result."""
+    n = 1 << max(12, (4 * len(values) - 1).bit_length())
+    spectrum = _fft(list(values) + [0.0] * (n - len(values)))
+    floor = max(abs(v) for v in spectrum) * 1e-9  # keep log() finite at spectral zeros
+    cepstrum = _fft([math.log(max(abs(v), floor)) for v in spectrum], inverse=True)
+    folded = ([cepstrum[0]] + [2 * c for c in cepstrum[1:n // 2]] + [cepstrum[n // 2]]
+              + [0.0] * (n // 2 - 1))
+    result = _fft([cmath.exp(v) for v in _fft(folded)], inverse=True)
+    return [v.real for v in result[:len(values)]]
+
+
 def prepare(values: list[float], rate: int, length_ms: int = 20, align: str = "original") -> list[int]:
-    """Turn a WAV's samples into what the unit stores, as Torpedo Remote does for 48 kHz files:
-    optional trim of the silence before the onset, cut/pad to 20 or 40 ms, peak-normalize."""
-    if rate != RATE:
-        raise ValueError(f"the IR must be {RATE} Hz (got {rate}); resampling isn't implemented")
+    """Turn a WAV's samples into what the unit stores, as Torpedo Remote does:
+    resample to 48 kHz, align (original; min-latency trims the silence before
+    the onset; min-phase converts and puts the peak at sample 4), cut/pad to
+    20 or 40 ms, peak-normalize."""
     if length_ms not in LENGTHS:
         raise ValueError("length must be 20 or 40 ms")
+    if align not in ALIGNS:
+        raise ValueError(f"align must be one of {', '.join(ALIGNS)}")
+    n = LENGTHS[length_ms]
+    if rate != RATE:
+        count = None  # min phase needs the whole IR; the others only what they keep
+        if align != "min-phase":  # output m depends on inputs within `span` of m * rate / RATE
+            onset = next((k for k, v in enumerate(values) if v), 0) if align == "min-latency" else 0
+            span = SINC_HALF / (min(1.0, RATE / rate) * CUTOFF)
+            count = math.ceil(max(onset - span, 0) * RATE / rate) + n + 2
+        values = resample(values, rate, count=count)
     if align == "min-latency":
         start = next((k for k, v in enumerate(values) if v != 0.0), 0)
         values = values[start:]
-    elif align != "original":
-        raise ValueError("align must be original or min-latency (min phase isn't implemented)")
-    n = LENGTHS[length_ms]
+    elif align == "min-phase":
+        values = minimum_phase(values)
+        shift = max(range(len(values)), key=lambda k: abs(values[k])) - MIN_PHASE_PEAK
+        values = values[shift:] if shift >= 0 else [0.0] * -shift + values
     values = (values + [0.0] * n)[:n]
     peak = max(abs(v) for v in values)
     if peak == 0:
