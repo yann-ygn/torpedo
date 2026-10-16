@@ -28,7 +28,7 @@ EQ_BANDS = {0: ("120 Hz", "360 Hz", "800 Hz", "2 kHz", "6 kHz"),
 MODES = ("simulation", "arcade", "ir")  # PRESET_MODE
 OFF_ON = ("off", "on")
 CHARACTER = ("triode", "pentode")  # (?) A001 = 1, Remote's switch looked up (pentode)
-SIDE = ("front", "back")  # (?)
+SIDE = ("back", "front")  # checked on the unit (2026-10-16)
 PHASE = ("normal", "inverted")
 GUITAR_BASS = ("guitar", "bass")
 
@@ -51,6 +51,14 @@ def band_freq(n: int) -> Callable[[Values], str]:
 
 def eq_gain(v: int) -> str:
     return f"{v - 20:+d}"  # 20 = flat; the step in dB is unknown
+
+
+def percent_127(v: int) -> str:
+    return f"{round(v * 100 / 127)}%"  # mic distance and axis, as the unit shows them
+
+
+def level_db(v: int) -> str:
+    return f"{v - 95:+d} dB"  # every 0..107 level: -95 dB .. +12 dB, as the unit shows them
 
 
 def percent_40(v: int) -> str:
@@ -87,6 +95,7 @@ class Section:
     head: Control | None = None  # main selector, next to the title (cab, amp, room)
     columns: tuple[str, ...] = ()  # headings of a two-column table
     rows: tuple[Row, ...] = ()
+    dims: bool = True  # switched off -> its controls are greyed out and skipped
 
 
 def on_off(name: str) -> Control:
@@ -119,19 +128,19 @@ REVERB = Section("REVERB", on_off("REVERB"), Control("REVERB_ROOM", CHOICE, ROOM
     single("Dry/wet", "REVERB_L_DRYWET"),
 ))
 
-PRESET_LEVEL = Section("PRESET", rows=(single("Level", "PRESET_LEVEL"),))
+PRESET_LEVEL = Section("PRESET", rows=(single("Level", "PRESET_LEVEL", fmt=level_db),))
 
 SIMULATION_LAYOUT = (
-    Section("CABINET", on_off("SIMUHP"), Control("SIMUHP_SPEAKER", CAB)),
+    Section("CABINET", on_off("SIMUHP"), Control("SIMUHP_SPEAKER", CAB), dims=False),
     POWER_AMP,
     EQ,
     REVERB,
     Section("MICS", columns=("Mic A", "Mic B"), rows=(
         pair("Mic", "SIMUHP_MIC", "SIMUHP_MIC_2", kind=MIC),
         pair("Side", "SIMUHP_POSITION", "SIMUHP_POSITION_2", kind=CHOICE, choices=SIDE),
-        pair("Distance", "SIMUHP_DISTANCE", "SIMUHP_DISTANCE_2"),
-        pair("Axis", "SIMUHP_CENTER", "SIMUHP_CENTER_2"),
-        pair("Level", "SIMUHP_LEVEL", "SIMUHP_LEVEL_2"),
+        pair("Distance", "SIMUHP_DISTANCE", "SIMUHP_DISTANCE_2", fmt=percent_127),
+        pair("Axis", "SIMUHP_CENTER", "SIMUHP_CENTER_2", fmt=percent_127),
+        pair("Level", "SIMUHP_LEVEL", "SIMUHP_LEVEL_2", fmt=level_db),
         pair("Phase", "SIMUHP_PHASE", "SIMUHP_PHASE_2", kind=CHOICE, choices=PHASE),
         pair("Mute", "SIMUHP_MUTE", "SIMUHP_MUTE_2", kind=CHOICE, choices=OFF_ON),
     )),
@@ -141,12 +150,12 @@ SIMULATION_LAYOUT = (
 IR_LAYOUT = (
     Section("IR LOADER", on_off("SIMUHP"), columns=("IR A", "IR B"), rows=(
         Row("IR", (Control("SIMUHP_WAVE0", IR_SLOT, slot=0), Control("SIMUHP_WAVE1", IR_SLOT, slot=1))),
-    )),
+    ), dims=False),
     POWER_AMP,
     EQ,
     REVERB,
     Section("IR MIX", columns=("IR A", "IR B"), rows=(
-        pair("Level", "SIMUHP_LEVEL", "SIMUHP_LEVEL_2"),
+        pair("Level", "SIMUHP_LEVEL", "SIMUHP_LEVEL_2", fmt=level_db),
         pair("Phase", "SIMUHP_PHASE", "SIMUHP_PHASE_2", kind=CHOICE, choices=PHASE),
         pair("Mute", "SIMUHP_MUTE", "SIMUHP_MUTE_2", kind=CHOICE, choices=OFF_ON),
     )),
@@ -168,7 +177,7 @@ ARCADE_LAYOUT = (
         single("Contour", "ARCADE_CONTOUR", fmt=percent_40, ends=("vintage", "modern")),
     )),
     Section("ROOM", head=Control("REVERB_ROOM", CHOICE, ROOMS)),
-    Section("PRESET", rows=(single("Level", "ARCADE_LEVEL"),)),
+    Section("PRESET", rows=(single("Level", "ARCADE_LEVEL", fmt=level_db),)),
 )
 
 LAYOUTS = {SIMULATION: SIMULATION_LAYOUT, ARCADE: ARCADE_LAYOUT, IR: IR_LAYOUT}

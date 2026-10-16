@@ -159,6 +159,13 @@ def test_save_into_empty_slot(torpedo):
     assert torpedo.dev.presets[75][0x20] == 22 and torpedo.read_names()[75].name == "TESTCAP"
 
 
+def test_save_keeping_the_name_skips_the_rename(torpedo):
+    torpedo.set_param(CONTOUR, 22)
+    saved = torpedo.save(75, "bdeluxe 1 rbn", overwrite=True)  # the edit buffer's name already
+    assert saved.name == "BDELUXE 1 RBN" and torpedo.dev.stores == [75]
+    assert not [c for c in commands(torpedo) if c[:2] == bytes([0x03, EDIT_BUFFER])]
+
+
 def test_save_refuses_to_overwrite(torpedo):
     with pytest.raises(ValueError, match="holds"):
         torpedo.save(3)

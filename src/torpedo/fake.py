@@ -161,8 +161,10 @@ class FakeHid:
                 self.queue.append(self._name_report(i))
             self.queue.append(self._name_report(EDIT_BUFFER))
         elif cmd == MSG_NAME and idx == EDIT_BUFFER:
-            self.buffer_name = b[2:].split(bytes(1))[0].decode()
-            self.queue.append(self._name_report(EDIT_BUFFER))
+            name = b[2:].split(bytes(1))[0].decode()
+            if name != self.buffer_name:  # no reply to a no-op rename (seen on the unit)
+                self.buffer_name = name
+                self.queue.append(self._name_report(EDIT_BUFFER))
         elif cmd == MSG_QUERY and idx == QUERY_STORE and val < PRESETS:
             self._store(val)
         else:

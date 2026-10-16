@@ -174,3 +174,33 @@ async def test_reconnects_after_unplug(app, dev):
                 break
         assert app.connected
         assert "A001" in str(app.query_one("#status").render())
+
+
+@pytest.mark.asyncio
+async def test_sections_turned_off_are_dimmed_and_skipped(app, dev):
+    dev.params[PRESET_MODE] = SIMULATION
+    assert A001[find_param("simuamp").index] == 0, "A001's power amp is off"
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(app, pilot)
+        amp = widget(app, SIMULATION, "simuamp")
+        assert widget(app, SIMULATION, "simuamp_gain").disabled
+        assert widget(app, SIMULATION, "simuamp_modele").disabled
+        amp.focus()
+        await pilot.press("down")
+        assert app.focused is widget(app, SIMULATION, "eq"), "jumped over the power amp"
+        assert not widget(app, SIMULATION, "simuhp_mute_2").disabled, "muted mic stays editable"
+        amp.focus()
+        await pilot.press("space")
+        await settle(app, pilot)
+        assert not widget(app, SIMULATION, "simuamp_gain").disabled
+        await pilot.press("down")
+        assert app.focused is widget(app, SIMULATION, "simuamp_gain")
+
+
+@pytest.mark.asyncio
+async def test_cab_stays_editable_with_the_cabinet_off(app, dev):
+    dev.params[PRESET_MODE] = SIMULATION
+    dev.params[find_param("simuhp").index] = 0
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(app, pilot)
+        assert not widget(app, SIMULATION, "simuhp_speaker").disabled

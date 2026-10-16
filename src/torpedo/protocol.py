@@ -118,7 +118,7 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("EQ_L_GAIN2", 0, 40),
     ("EQ_L_GAIN3", 0, 40),
     ("EQ_L_GAIN4", 0, 40),
-    ("PRESET_LEVEL", 0, 107),  # dB mapping unknown
+    ("PRESET_LEVEL", 0, 107),  # 1 dB steps: 0 = -95 dB, 95 = 0 dB, 107 = +12 dB (all levels)
     ("REVERB", 0, 1),
     ("REVERB_ROOM", 0, 7),
     ("REVERB_L_DRYWET", *KNOB),
@@ -210,7 +210,7 @@ class SetupOption:
 
 OFF_ON = ("off", "on")
 SETUP_OPTIONS = {o.name: o for o in [
-    SetupOption("level", 0x00, lo=0, hi=107),  # global output level, dB mapping unknown
+    SetupOption("level", 0x00, lo=0, hi=107),  # global output level, -95..+12 dB like PRESET_LEVEL
     SetupOption("mute", 0x01, OFF_ON),
     SetupOption("spdif_freq", 0x0A, ("48", "96")),  # kHz
     SetupOption("midi_cc", 0x0B, OFF_ON),

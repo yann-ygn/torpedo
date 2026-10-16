@@ -10,6 +10,7 @@ from textual.widgets import (Button, DirectoryTree, Input, Label, OptionList, Pr
 from textual.widgets.option_list import Option
 
 from .. import backup, ir
+from ..layout import level_db
 from ..protocol import IR_BANK, SETUP_OPTIONS, Cab, SetupOption
 from .widgets import Choice, ConfirmScreen, Slider, Value
 
@@ -183,7 +184,7 @@ class SetupPane(TabPane):
                     if o.choices:
                         yield Choice(o.choices, o, inline=len(o.choices) <= 4)
                     else:
-                        yield Slider(o.lo, o.hi, o)
+                        yield Slider(o.lo, o.hi, o, fmt=level_db if o.name == "level" else str)
 
     def show(self, setup: dict[int, int]):
         for w in self.query(Value):

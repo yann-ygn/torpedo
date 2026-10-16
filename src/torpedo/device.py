@@ -15,7 +15,7 @@ from . import ir
 from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, FOLDER_BANK_OFFSET,
                        HEARTBEAT, IR_ACK, IR_BANK, IR_STATUS, MSG_CAB, MSG_EMPTY, MSG_INFO,
                        MSG_IR_DATA, MSG_IR_END, MSG_IR_HEADER, MSG_NAME, MSG_PARAM, MSG_POLL,
-                       MSG_QUERY, MSG_SETUP, QUERY_IR, QUERY_IR_COMMIT, QUERY_IR_DELETE, NAMES_ALL, PARAM_BY_NAME, PARAMS, PRESET_MODE,
+                       MSG_QUERY, MSG_SETUP, QUERY_IR, QUERY_IR_COMMIT, QUERY_IR_DELETE, NAMES_ALL, NAMES_EDIT_BUFFER, PARAM_BY_NAME, PARAMS, PRESET_MODE,
                        PRESETS, QUERY_BANK, QUERY_INFO, QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP,
                        QUERY_STORE, REPORT_LEN, SETUP, SETUP_PRESET, SETUP_PRESET_SOURCE, Cab,
                        Param, PresetName, SETUP_OPTIONS, SetupOption, check_name, parse_cab,
@@ -248,6 +248,13 @@ class Torpedo:
         self._exchange(MSG_QUERY, QUERY_NAMES, NAMES_ALL, until=complete)
         return [seen[i] for i in sorted(seen)]
 
+    def read_buffer_name(self) -> str:
+        """The edit buffer's name (`04 09 80`)."""
+        reply = bytes([MSG_NAME, EDIT_BUFFER])
+        msgs = self._exchange(MSG_QUERY, QUERY_NAMES, NAMES_EDIT_BUFFER,
+                              until=lambda p: p[:2] == reply)
+        return next(parse_name(p) for p in msgs if p[:2] == reply)
+
     def save(self, n: int, name: str | None = None, overwrite: bool = False,
              names: list[PresetName] | None = None) -> PresetName:
         """Store the current sound (edit buffer) into preset `n`, optionally renamed.
@@ -262,13 +269,18 @@ class Torpedo:
         if not overwrite and not names[n].empty:
             raise ValueError(f"{preset_name(n)} holds \"{names[n].name}\": "
                              "pass overwrite=True to replace it")
-        name = check_name(name) if name is not None else names[-1].name
-        encoded = name.encode("ascii")
-        echo = bytes([MSG_NAME, EDIT_BUFFER])
-        self._exchange(MSG_NAME, EDIT_BUFFER, *encoded,
-                       until=lambda p: p[:2] == echo and parse_name(p) == name)
-        stored = bytes([MSG_SETUP, SETUP_PRESET, n])
-        msgs = self._exchange(MSG_QUERY, QUERY_STORE, n, until=lambda p: p[:3] == stored,
+        current = names[-1].name if names is not None else self.read_buffer_name()
+        name = check_name(name) if name is not None else current
+        if name != current:  # renaming to the same name gets no reply (PROTOCOL.md)
+            encoded = name.encode("ascii")
+            echo = bytes([MSG_NAME, EDIT_BUFFER])
+            self._exchange(MSG_NAME, EDIT_BUFFER, *encoded,
+                           until=lambda p: p[:2] == echo and parse_name(p) == name)
+        # The reply starts with `03 n <name>`; `0c 03 n` follows in the same burst,
+        # but may not come if preset n was already selected unedited.
+        stored = (bytes([MSG_NAME, n]), bytes([MSG_SETUP, SETUP_PRESET, n]))
+        msgs = self._exchange(MSG_QUERY, QUERY_STORE, n,
+                              until=lambda p: p[:2] == stored[0] or p[:3] == stored[1],
                               timeout=STORE_TIMEOUT)
         return next((PresetName(n, parse_name(p), bool(p[2])) for p in msgs
                      if p[0] == MSG_NAME and p[1] == n), PresetName(n, name, False))

@@ -142,7 +142,9 @@ RAM-only is not known: don't send these yet.
 Torpedo Remote has a single "save" (renaming = saving under a new name):
 
 1. `03 80 <name>` (name from byte 2, NUL-padded): names the edit buffer; the
-   device echoes `03 80 <arcade> <name>`.
+   device echoes `03 80 <arcade> <name>`. Like other no-op writes, renaming
+   it to the name it already has gets no reply at all (seen on the unit
+   2026-10-16, "MESA2"), so skip it then (`04 09 80` reads the name).
 2. `04 73 n`: stores the edit buffer into preset n. This writes flash: about
    2 s later the device sends `03 n <arcade> <name>`, `0c 03 n`, `0c 04 n`,
    `0c 05 00`.

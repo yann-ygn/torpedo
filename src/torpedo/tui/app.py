@@ -14,7 +14,7 @@ from textual.widgets.option_list import Option
 
 from ..device import Info, Torpedo
 from ..layout import (ARCADE_LAYOUT, CAB, IR_LAYOUT, IR_SLOT, LAYOUTS, MIC, MODE_CONTROL, MODES,
-                      SIMULATION_LAYOUT, SLIDER, Control)
+                      SIMULATION_LAYOUT, SLIDER, Control, level_db)
 from ..protocol import (EDIT_BUFFER, MSG_PARAM, PARAMS, PRESET_MODE, PRESETS, SETUP_PRESET,
                         SETUP_OPTIONS, SETUP_PRESET_SOURCE, Cab, PresetName, check_name, preset_name)
 from .editor import Editor
@@ -342,7 +342,7 @@ class TorpedoApp(App):
             text += "  [b $warning]● edited[/] (unsaved)"
         level, mute = s.setup.get(SETUP_OPTIONS["level"].index), s.setup.get(SETUP_OPTIONS["mute"].index)
         if level is not None:
-            text += f"   [dim]out {level} · mute {'[b red]ON[/]' if mute else 'off'}[/]"
+            text += f"   [dim]out {level_db(level)} · mute {'[b red]ON[/]' if mute else 'off'}[/]"
         self.query_one("#status", Static).update(text)
 
     def show_presets(self):

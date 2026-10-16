@@ -31,7 +31,8 @@ class Editor(Vertical):
     Editor .columns .label { width: 14; text-style: none; }
     Editor .alt { width: 1fr; color: $foreground; }
     Editor.readonly .title, Editor.readonly .label, Editor.readonly .columns Label,
-    Editor.readonly .alt { color: $text-disabled; }
+    Editor.readonly .alt, Editor .-off .label, Editor .-off.columns Label,
+    Editor .-off .alt { color: $text-disabled; }
     """
 
     def __init__(self, layout: tuple[Section, ...], readonly: bool = False, **kw):
@@ -39,19 +40,24 @@ class Editor(Vertical):
         self.sections, self.readonly = layout, readonly
         self.rows: list[tuple[object, Horizontal]] = []
         self.alts: dict[Value, Static] = {}
+        # sections with an on/off: (switch, its widgets, its rows), dimmed while off
+        self.switched: list[tuple[Control, list[Value], list[Horizontal]]] = []
         if readonly:
             self.add_class("readonly")
-        # sliders with end words (arcade's cold ... hot) share one width for
-        # those words and the value, so their bars line up
-        ended = [c for c in controls(layout) if c.kind == SLIDER and any(c.ends)]
-        self.ends_width = tuple(max((len(c.ends[i]) for c in ended), default=0) for i in (0, 1))
-        self.label_width = max((slider_label_width(PARAMS[c.index].lo, PARAMS[c.index].hi, c.fmt)
-                                for c in ended), default=0)
 
-    def _widget(self, c: Control, row: int, col: int, classes: str | None = None) -> Value:
-        pad = ({"ends_width": self.ends_width, "label_width": self.label_width}
-               if c.kind == SLIDER and any(c.ends) else {})
-        w = make_widget(c, classes=classes, **pad)
+    @staticmethod
+    def padding(s: Section) -> dict:
+        """The sliders of a section share one width for their end words (cold ... hot)
+        and their value, so their bars and values line up."""
+        sliders = [c for c in controls((s,)) if c.kind == SLIDER]
+        return {"ends_width": tuple(max((len(c.ends[i]) for c in sliders), default=0) for i in (0, 1)),
+                "label_width": max((slider_label_width(PARAMS[c.index].lo, PARAMS[c.index].hi, c.fmt)
+                                    for c in sliders), default=0)}
+
+    def _widget(self, c: Control, row: int, col: int, classes: str | None = None,
+                pad: dict | None = None) -> Value:
+        kw = pad if pad and c.kind == SLIDER else {}
+        w = make_widget(c, classes=classes, **kw)
         w.grid = (row, col)
         w.disabled = self.readonly
         return w
@@ -59,24 +65,32 @@ class Editor(Vertical):
     def compose(self) -> ComposeResult:
         r = 0
         for s in self.sections:
+            pad = self.padding(s)
+            widgets, rows = [], []
+            if s.switch and s.dims:
+                self.switched.append((s.switch, widgets, rows))
             with Horizontal(classes="section"):
                 yield Label(s.title, classes="title")
                 if s.switch:
                     yield self._widget(s.switch, r, 0, "switch")
                 if s.head:
-                    yield self._widget(s.head, r, 1)
+                    widgets.append(self._widget(s.head, r, 1))
+                    yield widgets[-1]
             r += 1
             if s.columns:
-                with Horizontal(classes="row columns"):
+                with Horizontal(classes="row columns") as h:
+                    rows.append(h)
                     yield Label("", classes="label")
                     for heading in s.columns:
                         yield Label(heading)
             for row in s.rows:
                 with Horizontal(classes="row") as h:
                     self.rows.append((row, h))
+                    rows.append(h)
                     yield Label(row.label, classes="label")
                     for col, c in enumerate(row.cells):
-                        w = self._widget(c, r, col)
+                        w = self._widget(c, r, col, pad=pad)
+                        widgets.append(w)
                         yield w
                         if c.when:
                             self.alts[w] = Static("", classes="alt")
@@ -88,6 +102,12 @@ class Editor(Vertical):
         """Show the unit's values. `changed` flash; `skip` are being edited (debounced)."""
         for row, h in self.rows:
             h.display = row.when is None or row.when(values)
+        for switch, widgets, rows in self.switched:
+            off = values.get(switch.index) == 0  # a section turned off: dim it, skip it
+            for w in widgets:
+                w.disabled = self.readonly or off
+            for h in rows:
+                h.set_class(off, "-off")
         speaker = values.get(SPEAKER, -1)
         mics = cabs[speaker].mics if 0 <= speaker < len(cabs) else []
         for w in self.query(Value):
