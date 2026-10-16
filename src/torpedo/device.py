@@ -111,6 +111,18 @@ class Torpedo:
                 raise TimeoutError(f"no reply to {bytes(cmd).hex(' ')}")
             self._send(MSG_POLL)
 
+    def poll(self) -> list[bytes]:
+        """Fetch what the device sent on its own (front panel changes) into the cache.
+
+        Coming back on the panel to a preset left with edits restores them with
+        `0c 03 80` but no SETUP_PRESET_SOURCE, so the source is then read back.
+        """
+        msgs = self._exchange(MSG_POLL)
+        setup = {p[1]: p[2] for p in msgs if p[0] == MSG_SETUP}
+        if setup.get(SETUP_PRESET) == EDIT_BUFFER and SETUP_PRESET_SOURCE not in setup:
+            self.read_setup()
+        return msgs
+
     def _absorb(self, p: bytes):
         if p[0] == MSG_PARAM and p[1] < len(PARAMS):
             self.params[p[1]] = p[2]
@@ -274,7 +286,8 @@ class Torpedo:
         return {p[1]: p[2] for p in msgs if p[0] == MSG_PARAM}
 
     def discard(self) -> dict[int, int]:
-        """Drop unsaved edits by reloading the preset they came from."""
+        """Leave unsaved edits by reloading the preset they came from. The unit
+        still keeps them (as e.g. "A001*" on its panel) until the next edit."""
         return self.select_preset(self.source) if self.edited else {}
 
     # --- IRs (bank 1) ---------------------------------------------------------

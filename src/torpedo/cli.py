@@ -330,7 +330,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("preset", help="show or select the current preset (1 = A001)")
     p.add_argument("preset", nargs="?", type=parse_preset)
     p.set_defaults(func=cmd_preset)
-    sub.add_parser("discard", help="drop unsaved edits (reload the current preset)").set_defaults(func=cmd_discard)
+    sub.add_parser("discard", help="leave unsaved edits (reload the stored preset; the unit keeps them as A001* etc.)").set_defaults(func=cmd_discard)
     p = sub.add_parser("setup", help="show or change global settings: NAME=VALUE ...")
     p.add_argument("assignments", nargs="*", type=parse_setup, metavar="NAME=VALUE")
     p.add_argument("--raw", action="store_true", help="also dump every setup value")

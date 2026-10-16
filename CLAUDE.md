@@ -38,6 +38,13 @@ reference implementation.
   src/torpedo/ir.py, capture `2026-10-15-ir-upload.log`), tested on the unit
   (bank 1 = the 86 ML IRs again). Not done: resampling, min-phase alignment.
 - Footswitch settings (setup 06–09) aren't exposed by Remote.
+- Front-panel changes arrive unsolicited (capture `2026-10-16-frontpanel.log`,
+  `tools/listen.py`): `Torpedo.poll()` picks them up, `FakeHid.panel_*` emulates
+  them. The IN/OUT LEVEL controls report nothing. Meters in `05` are still
+  undecoded (no instrument during the capture).
+- After a USB replug or power cycle the unit sends nothing, so re-read
+  everything (capture `2026-10-16-unplug.log`). `discard` doesn't clear the
+  unit's kept edit ("A001*" on its panel, survives reboots); see PROTOCOL.md.
 
 ## Safety
 
@@ -60,6 +67,10 @@ python tools/summarize.py captures/<name>.log 24              # collapse dumps, 
 
 The `.log` skips the idle `7e`/`05`/`04 02` traffic; `<name>.log.raw` keeps it.
 Ask the user to perform one action per ~5 s so they separate in the log.
+
+To see what the unit sends on its own (front panel, meters in `05`), close
+Remote and run `uv run python tools/listen.py captures/<name>.log`: it only
+polls with `7e`, logs in the same format, and takes typed notes as labels.
 
 ## Conventions (same as klim)
 

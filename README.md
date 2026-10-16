@@ -8,7 +8,7 @@ uv run torpedo info                          # serial, firmware, current preset
 uv run torpedo params                        # every parameter of the current preset, with ranges
 uv run torpedo get arcade_contour 0x1d       # by name (case-insensitive) or index
 uv run torpedo set arcade_contour=22 reverb_room=3
-uv run torpedo discard                       # drop unsaved edits (reloads the preset)
+uv run torpedo discard                       # leave unsaved edits (reloads the preset; the unit keeps them as A001*)
 uv run torpedo preset 2                      # select A002 (or `preset A002`)
 uv run torpedo presets                       # preset names (--all: also the empty USER slots)
 uv run torpedo save --name "my crunch"       # store into the first empty USER slot

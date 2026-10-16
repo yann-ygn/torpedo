@@ -195,6 +195,49 @@ by up to ±1.6 LSB (float processing).
 
 Not captured yet: footswitch settings (not exposed by Remote).
 
+## Front panel (2026-10-16-frontpanel capture)
+
+Recorded with `tools/listen.py` (only `7e` polls, Remote closed). Changes made
+on the unit are queued like write echoes, with no command:
+
+| on the unit | device sends |
+|---|---|
+| IN LEVEL knob | nothing |
+| OUT LEVEL encoder | nothing (SETUP_LEVEL read 83 afterwards, as before) |
+| preset change (A001 edited → A002) | `01 idx val` for each parameter that differs, then `0c 03 01`; no `0c 04` |
+| back one step, onto "A001*" (see below) | the edited values again, then `0c 03 80`; no `0c 04` (source still read 0) |
+| SETUP menu, MIDI CC off / on | `0c 0b 00`, `0c 0b 01` |
+| EDIT menu, power amp on / off (preset in simulation mode) | `01 00 01`, `01 00 00` (SIMUAMP) |
+
+The heartbeat keeps coming once a second while polling. With no input
+signal, every `05` was `05 00 00 00 00`.
+
+### The kept edit ("A001*")
+
+The unit keeps one unsaved edit, which its panel lists as a preset with a
+`*` after the source's label ("A001*"). Leaving the edited preset, on the
+panel or with a host select (`0c 03 n`, i.e. `torpedo discard`), doesn't
+drop it: selecting "A001*" on the panel sends the edited values and `0c 03
+80` again, with no `0c 04` (source still read 0). The next edit replaces it,
+and it survives a power cycle (2026-10-16-unplug capture: the power amp edit
+was still in "A001*" after rebooting, while the unit started on A001).
+The host has no observed way to select it or to clear it.
+
+A front-panel edit on an unedited preset (EDIT menu, power amp on: `01 00
+01`, `01 02 01`, `01 18 55`, `01 1d 01`) is followed by `0c 03 80` alone,
+without the `0c 04` a host write gets.
+
+### Unplugging and power cycles (2026-10-16-unplug capture)
+
+On a USB replug or a power cycle the unit sends nothing: no startup message,
+no report of a preset changed on the panel while unplugged. A client has to
+re-read the info, setup and params after reopening. After a power cycle the
+stale part of `05` is zeros (fresh buffer); after a replug it keeps the old
+contents. One `05 09 00 …` came just before a power-off, otherwise byte 1 was
+always 0 (power-down flag? *(?)*).
+
+Not seen: footswitch settings from the SETUP menu (not tried).
+
 ## Do not send
 
 From the RTTI: `RebootableCommand<0x03>`, `<0x04>`, `<0x27>`, `UpdateFirmwareCommand`,

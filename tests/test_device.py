@@ -125,6 +125,25 @@ def test_discard_returns_to_the_edited_preset(torpedo):
     assert torpedo.discard() == {}, "nothing to discard"
 
 
+def test_front_panel_changes(torpedo):
+    """A discarded edit stays on the unit ("A001*"), and the panel can load it again."""
+    torpedo.set_param(CONTOUR, 10)
+    torpedo.discard()
+    torpedo.dev.panel_select(1)
+    torpedo.poll()
+    assert (torpedo.preset, torpedo.params[0x20]) == (1, 30)
+    torpedo.dev.panel_select_kept()
+    torpedo.poll()
+    assert (torpedo.preset, torpedo.source, torpedo.params[0x20]) == (EDIT_BUFFER, 0, 10)
+    torpedo.dev.panel_select(0)
+    torpedo.dev.panel_param(0x1D, 1)  # power amp, on an unedited preset
+    torpedo.dev.panel_setup(SETUP.index("SETUP_MIDI_CC"), 0)
+    torpedo.poll()
+    assert (torpedo.preset, torpedo.source, torpedo.params[0x1D]) == (EDIT_BUFFER, 0, 1)
+    assert torpedo.setup[SETUP.index("SETUP_MIDI_CC")] == 0
+    assert commands(torpedo)[-1] == bytes([0x04, 0x0B, 0]), "only the setup re-read was sent"
+
+
 def test_read_names(torpedo):
     names = torpedo.read_names()
     assert len(names) == 129 and names[-1].index == EDIT_BUFFER

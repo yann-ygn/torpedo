@@ -78,6 +78,7 @@ class FakeHid:
         self.stores: list[int] = []  # presets written to "flash"
         self.irs = [(name, fake_ir(i)) for i, name in enumerate(ML_IRS)]  # bank 1
         self.upload: list[bytes] = []
+        self.kept: tuple[int, list[int], str] | None = None  # the panel's "A001*": source, params, name
         self.queue: deque[list[int]] = deque()
         self.replies = 0  # IN reports owed: one per OUT report
         self.sent: list[bytes] = []  # every OUT report, without the report ID
@@ -167,7 +168,28 @@ class FakeHid:
         else:
             raise AssertionError(f"fake: command never observed on the real device: {b[:4].hex(' ')}")
 
-    def _set_param(self, idx: int, val: int):
+    # --- front panel (2026-10-16-frontpanel capture): queued without a command
+
+    def panel_select(self, n: int):
+        """Preset knob onto stored preset n. An edit being left is kept (see `kept`)."""
+        self._keep()
+        self._load(self.presets[n], self.names[n], n)
+
+    def panel_select_kept(self):
+        """Preset knob onto the kept edit ("A001*"): SETUP_PRESET = EDIT_BUFFER, no SETUP_PRESET_SOURCE."""
+        self.setup[SETUP_PRESET_SOURCE], new, name = self.kept
+        self._load(new, name, EDIT_BUFFER)
+
+    def panel_param(self, idx: int, val: int):
+        """EDIT menu: like a host write, except that SETUP_PRESET_SOURCE isn't sent."""
+        self._set_param(idx, val, panel=True)
+
+    def panel_setup(self, idx: int, val: int):
+        """SETUP menu (seen: SETUP_MIDI_CC). The IN and OUT LEVEL controls send nothing."""
+        self.setup[idx] = val
+        self.queue.append(report(MSG_SETUP, idx, val))
+
+    def _set_param(self, idx: int, val: int, panel: bool = False):
         if self.params[idx] == val or (self.params[PRESET_MODE] == ARCADE and idx not in ARCADE_EDITABLE):
             return
         changes = {EQ_GAIN0: val, EQ_GAIN4: val} if idx == CONTOUR else {}
@@ -180,17 +202,28 @@ class FakeHid:
             self.setup[SETUP_PRESET_SOURCE] = self.setup[SETUP_PRESET]
             self.setup[SETUP_PRESET] = EDIT_BUFFER
             self.queue.append(report(MSG_SETUP, SETUP_PRESET, EDIT_BUFFER))
-            self.queue.append(report(MSG_SETUP, SETUP_PRESET_SOURCE, self.setup[SETUP_PRESET_SOURCE]))
+            if not panel:
+                self.queue.append(report(MSG_SETUP, SETUP_PRESET_SOURCE, self.setup[SETUP_PRESET_SOURCE]))
 
     def _select(self, n: int):
         if self.setup[SETUP_PRESET] == n:
             return
-        new = self.presets[n]
+        self._keep()
+        self._load(self.presets[n], self.names[n], n)
+
+    def _keep(self):
+        """The unit keeps the last edit it leaves, across selects and reboots."""
+        if self.setup[SETUP_PRESET] == EDIT_BUFFER:
+            self.kept = (self.setup[SETUP_PRESET_SOURCE], list(self.params), self.buffer_name)
+
+    def _load(self, new: list[int], name: str, preset: int):
         self.queue.extend(report(MSG_PARAM, i, v) for i, v in enumerate(new) if v != self.params[i])
         self.params = list(new)
-        self.buffer_name = self.names[n]
-        self.setup[SETUP_PRESET] = self.setup[SETUP_PRESET_SOURCE] = n
-        self.queue.append(report(MSG_SETUP, SETUP_PRESET, n))
+        self.buffer_name = name
+        self.setup[SETUP_PRESET] = preset
+        if preset != EDIT_BUFFER:
+            self.setup[SETUP_PRESET_SOURCE] = preset
+        self.queue.append(report(MSG_SETUP, SETUP_PRESET, preset))
 
     def _name_report(self, idx: int) -> list[int]:
         name = self.buffer_name if idx == EDIT_BUFFER else self.names[idx]
