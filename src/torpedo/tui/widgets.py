@@ -25,7 +25,7 @@ class Value(Widget, can_focus=True):
         Binding("down", "nav(1)", show=False),
     ]
     DEFAULT_CSS = """
-    Value { height: 1; width: 1fr; color: $text-muted; }
+    Value { height: 1; width: 1fr; color: $foreground; }
     Value:focus { color: $text; background: $boost; }
     Value:disabled { color: $text-disabled; }
     Value.-changed { background: $warning 30%; }
@@ -77,12 +77,14 @@ def slider_label_width(lo: int, hi: int, fmt=str) -> int:
 class Slider(Value):
     """Bar + value: arrows step (shift: x10), Home/End, Enter types a number, mouse drags."""
 
-    COMPONENT_CLASSES = {"slider--fill", "slider--knob", "slider--end"}
+    COMPONENT_CLASSES = {"slider--fill", "slider--knob", "slider--track", "slider--end"}
     DEFAULT_CSS = """
     Slider > .slider--fill { color: $accent; }
     Slider > .slider--knob { color: $accent; text-style: bold; }
     Slider:focus > .slider--knob { color: $text; }
-    Slider > .slider--end { color: $text-muted; }
+    Slider > .slider--track { color: $text-muted; }
+    Slider > .slider--end { color: $foreground; }
+    Slider:disabled > .slider--end { color: $text-disabled; }
     Slider:disabled > .slider--fill, Slider:disabled > .slider--knob { color: $text-disabled; }
     """
     BINDINGS = [
@@ -126,7 +128,7 @@ class Slider(Value):
         text = Text(a, style=end)
         text.append("━" * knob, style=self.get_component_rich_style("slider--fill"))
         text.append("●", style=self.get_component_rich_style("slider--knob"))
-        text.append("─" * (width - knob - 1))
+        text.append("─" * (width - knob - 1), style=self.get_component_rich_style("slider--track"))
         text.append(b, style=end)
         label = self.fmt(self.value) if v == self.value else f"?{self.value}"
         text.append(f"  {label:>{self.label_width}}")

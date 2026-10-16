@@ -38,7 +38,7 @@ class IrPane(TabPane):
     IrPane .buttons { height: auto; margin-top: 1; }
     IrPane Button { margin-right: 1; }
     IrPane .opt { height: 1; }
-    IrPane .opt Label { width: 10; color: $text-muted; }
+    IrPane .opt Label { width: 10; color: $foreground; }
     """
 
     def compose(self) -> ComposeResult:
@@ -168,7 +168,7 @@ class SetupPane(TabPane):
     DEFAULT_CSS = """
     SetupPane > VerticalScroll { padding: 1 2; }
     SetupPane .opt { height: 1; margin-bottom: 1; }
-    SetupPane .opt Label { width: 20; color: $text-muted; }
+    SetupPane .opt Label { width: 20; color: $foreground; }
     SetupPane .opt Value { max-width: 60; }
     """
     LABELS = {"level": "Output level", "mute": "Mute", "spdif_freq": "S/PDIF rate (kHz)",

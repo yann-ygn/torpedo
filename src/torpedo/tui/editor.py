@@ -26,11 +26,12 @@ class Editor(Vertical):
     Editor .title { width: 14; text-style: bold; color: $accent; }
     Editor .switch { width: 12; }
     Editor .row { height: 1; }
-    Editor .label { width: 14; padding-left: 2; color: $text-muted; }
-    Editor .columns Label { width: 1fr; text-style: underline; color: $text-muted; }
+    Editor .label { width: 14; padding-left: 2; color: $foreground; }
+    Editor .columns Label { width: 1fr; text-style: underline; color: $foreground; }
     Editor .columns .label { width: 14; text-style: none; }
-    Editor .alt { width: 1fr; color: $text-muted; }
-    Editor.readonly .title, Editor.readonly .label { color: $text-disabled; }
+    Editor .alt { width: 1fr; color: $foreground; }
+    Editor.readonly .title, Editor.readonly .label, Editor.readonly .columns Label,
+    Editor.readonly .alt { color: $text-disabled; }
     """
 
     def __init__(self, layout: tuple[Section, ...], readonly: bool = False, **kw):
