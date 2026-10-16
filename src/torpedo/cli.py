@@ -380,11 +380,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("rename", help="rename the current preset (must have no unsaved edits)")
     p.add_argument("name")
     p.set_defaults(func=cmd_rename)
+    sub.add_parser("tui", help="interactive terminal interface")
     return ap
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    if args.cmd == "tui":
+        from .tui import run
+        return run(fake=args.fake)
     try:
         if args.fake:
             from .fake import FakeHid

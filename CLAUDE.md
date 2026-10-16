@@ -15,7 +15,13 @@ reference implementation.
 - Package `src/torpedo/` (2026-10-15): `protocol.py` (tables, ranges,
   arcade/simulation rules), `device.py` (transport + cache), `fake.py` (report-level emulator,
   raises on unobserved commands), `cli.py` (info/params/get/set/preset/discard/setup).
-  Verified on the unit. No TUI yet.
+  Verified on the unit.
+- TUI on branch `tui` (2026-10-16, `torpedo tui`, `src/torpedo/tui/`): preset list +
+  editor in Remote's rack order, overlay pickers, arcade shows the computed
+  simulation values dimmed; IRs/Setup/Backup tabs. The editor is driven by
+  `src/torpedo/layout.py` (no Textual, meant for the MPC plugin too). Only
+  tested against FakeHid so far. CHARACTER (triode/pentode) and SIDE
+  (front/back) labels are guesses from screenshots.
 - Ranges come from a min/max sweep capture (`captures/2026-10-15-ranges.log`,
   `tools/ranges.py`). Cab selection from bank 0 works (`cabs`/`cab`, capture
   `2026-10-15-cabs.log`); IR mode (PRESET_MODE=2) slots load from the ML bank

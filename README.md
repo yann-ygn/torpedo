@@ -29,6 +29,7 @@ uv run torpedo cab darkprinz                 # select by index, name or unique p
 uv run torpedo ir                            # the two IR slots (IR mode: preset_mode=2)
 uv run torpedo ir 1 v30-906-e                # load an IR from the ML bank into slot 1
 uv run torpedo --fake params                 # simulated device, nothing is sent
+uv run torpedo tui                           # terminal interface (--fake tui: simulated)
 ```
 
 `set` edits the current preset in the unit's memory only, until `save`
@@ -47,6 +48,17 @@ The Torpedo has one cab and two mics (A and B) picked from that cab's own 8
 mics. `cab` keeps each mic on the same mic when the new cab has it, like
 Torpedo Remote; otherwise the mic index is left as is. Mic B only follows in
 simulation mode, since arcade mode ignores mic B.
+
+## TUI
+
+`torpedo tui` shows the presets on the left and the current preset on the
+right, laid out like Torpedo Remote's rack for the preset's mode. ↑/↓ move
+between rows, ←/→ change a value (shift: ×10), Enter types a number or opens
+a filterable list (cab, mic, IR, amp, room), Space toggles. `s` saves, `r`
+renames, `d` discards, `/` filters the presets. In arcade mode, the
+simulation values arcade computes are listed under its controls, read-only.
+Changes made on the unit's front panel show up (highlighted for a second),
+and the TUI reconnects by itself after a replug.
 
 ## IRs
 
