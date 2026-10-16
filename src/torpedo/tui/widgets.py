@@ -26,7 +26,11 @@ class Value(Widget, can_focus=True):
     ]
     DEFAULT_CSS = """
     Value { height: 1; width: 1fr; color: $foreground; }
-    Value:focus { color: $text; background: $boost; }
+    Value:focus {
+        color: $block-cursor-foreground;
+        background: $block-cursor-background;
+        text-style: $block-cursor-text-style;
+    }
     Value:disabled { color: $text-disabled; }
     Value.-changed { background: $warning 30%; }
     """
@@ -81,10 +85,11 @@ class Slider(Value):
     DEFAULT_CSS = """
     Slider > .slider--fill { color: $accent; }
     Slider > .slider--knob { color: $accent; text-style: bold; }
-    Slider:focus > .slider--knob { color: $text; }
+    Slider:focus > .slider--knob { color: $block-cursor-foreground; }
     Slider > .slider--track { color: $text-muted; }
     Slider > .slider--end { color: $foreground; }
     Slider:disabled > .slider--end { color: $text-disabled; }
+    Slider:focus > .slider--track, Slider:focus > .slider--end { color: $block-cursor-foreground; }
     Slider:disabled > .slider--fill, Slider:disabled > .slider--knob { color: $text-disabled; }
     """
     BINDINGS = [
@@ -174,8 +179,8 @@ class Choice(Value):
 
     COMPONENT_CLASSES = {"choice--on"}
     DEFAULT_CSS = """
-    Choice > .choice--on { color: $accent; text-style: bold reverse; }
-    Choice:disabled > .choice--on { color: $text-disabled; text-style: reverse; }
+    Choice > .choice--on { color: $background; background: $accent; text-style: bold; }
+    Choice:disabled > .choice--on { color: $background; background: $foreground 35%; }
     """
     BINDINGS = [
         Binding("left", "step(-1)", show=False),
