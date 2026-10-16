@@ -12,14 +12,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from . import ir
-from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, FOLDER_BANK_OFFSET,
-                       HEARTBEAT, IR_ACK, IR_BANK, IR_STATUS, MSG_CAB, MSG_EMPTY, MSG_INFO,
-                       MSG_IR_DATA, MSG_IR_END, MSG_IR_HEADER, MSG_NAME, MSG_PARAM, MSG_POLL,
-                       MSG_QUERY, MSG_SETUP, QUERY_IR, QUERY_IR_COMMIT, QUERY_IR_DELETE, NAMES_ALL, NAMES_EDIT_BUFFER, PARAM_BY_NAME, PARAMS, PRESET_MODE,
-                       PRESETS, QUERY_BANK, QUERY_INFO, QUERY_NAMES, QUERY_PARAMS, QUERY_SETUP,
-                       QUERY_STORE, REPORT_LEN, SETUP, SETUP_PRESET, SETUP_PRESET_SOURCE, Cab,
-                       Param, PresetName, SETUP_OPTIONS, SetupOption, check_name, parse_cab,
-                       parse_name, preset_name)
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, EMPTY_PRESET,
+                       FOLDER_BANK_OFFSET, HEARTBEAT, IR_ACK, IR_BANK, MSG_CAB, MSG_EMPTY,
+                       MSG_INFO, MSG_IR_DATA, MSG_IR_END, MSG_IR_HEADER, MSG_NAME, MSG_PARAM,
+                       MSG_POLL, MSG_QUERY, MSG_SETUP, NAMES_ALL, NAMES_EDIT_BUFFER, PARAMS,
+                       PARAM_BY_NAME, PRESETS, PRESET_MODE, QUERY_BANK, QUERY_CLEAR, QUERY_COMMIT,
+                       QUERY_INFO, QUERY_IR, QUERY_IR_DELETE, QUERY_NAMES, QUERY_PARAMS,
+                       QUERY_SETUP, QUERY_STORE, REPORT_LEN, SETUP, SETUP_OPTIONS, SETUP_PRESET,
+                       SETUP_PRESET_SOURCE, STATUS, Cab, Param, PresetName, SetupOption,
+                       check_name, parse_cab, parse_name, preset_name)
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
@@ -302,6 +303,27 @@ class Torpedo:
         still keeps them (as e.g. "A001*" on its panel) until the next edit."""
         return self.select_preset(self.source) if self.edited else {}
 
+    def clear_preset(self, n: int) -> list[PresetName]:
+        """Empty preset `n` like Remote's Delete (a flash write): it becomes a
+        "USER" slot holding EMPTY_PARAMS. Returns the names read back.
+
+        Refused while `n` has unsaved edits (not tried on the unit)."""
+        if not 0 <= n < PRESETS:
+            raise ValueError(f"preset must be 0..{PRESETS - 1}")
+        if self.edited and self.source == n:
+            raise ValueError(f"{preset_name(n)} has unsaved edits: save or discard them first")
+        current = self.preset == n
+        status = bytes([MSG_QUERY, STATUS, 0])
+        self._exchange(MSG_QUERY, QUERY_CLEAR, n, until=lambda p: p[:3] == status,
+                       timeout=STORE_TIMEOUT)
+        self._commit()
+        names = self.read_names()
+        if names[n].name != EMPTY_PRESET:
+            raise RuntimeError(f"{preset_name(n)} is still named \"{names[n].name}\" after clearing it")
+        if current:
+            self.read_params()  # the unit renamed the edit buffer but sent no parameters
+        return names
+
     # --- IRs (bank 1) ---------------------------------------------------------
 
     def download_ir(self, index: int, bank: int = IR_BANK) -> tuple[str, list[int]]:
@@ -314,9 +336,9 @@ class Torpedo:
             raise RuntimeError(f"unexpected IR download ({len(headers)} headers)")
         return ir.parse_transfer(headers[0], headers[1], data)
 
-    def _ir_commit(self):
-        done = bytes([MSG_QUERY, IR_STATUS, 0])
-        self._exchange(MSG_QUERY, QUERY_IR_COMMIT, until=lambda p: p[:3] == done,
+    def _commit(self):
+        done = bytes([MSG_QUERY, STATUS, 0])
+        self._exchange(MSG_QUERY, QUERY_COMMIT, until=lambda p: p[:3] == done,
                        timeout=STORE_TIMEOUT)
 
     def upload_ir(self, name: str, samples: list[int]) -> int:
@@ -332,9 +354,9 @@ class Torpedo:
         self._exchange(*h1, until=lambda p: p[:2] == ack, timeout=STORE_TIMEOUT)
         for chunk in ir.chunks(stream):
             self._exchange(*chunk, until=lambda p: p[:2] == ack, drain=False)
-        self._exchange(MSG_IR_END, until=lambda p: p[:2] == bytes([MSG_QUERY, IR_STATUS]),
+        self._exchange(MSG_IR_END, until=lambda p: p[:2] == bytes([MSG_QUERY, STATUS]),
                        timeout=STORE_TIMEOUT)
-        self._ir_commit()
+        self._commit()
         after = self.read_cabs(IR_BANK)
         index = len(after) - 1
         if len(after) != len(irs) + 1 or after[index].name != name:
@@ -349,10 +371,10 @@ class Torpedo:
         irs = self.read_cabs(IR_BANK)
         if not 0 <= index < len(irs) or irs[index].name != name:
             raise ValueError(f"IR {index} of bank {IR_BANK} isn't \"{name}\"")
-        status = bytes([MSG_QUERY, IR_STATUS, 0])
+        status = bytes([MSG_QUERY, STATUS, 0])
         self._exchange(MSG_QUERY, QUERY_IR_DELETE, index, IR_BANK,
                        until=lambda p: p[:3] == status, timeout=STORE_TIMEOUT)
-        self._ir_commit()
+        self._commit()
         expected = [c.name for c in irs[:index] + irs[index + 1:]]
         if [c.name for c in self.read_cabs(IR_BANK)] != expected:
             raise RuntimeError("the IR bank doesn't look as expected after the delete")

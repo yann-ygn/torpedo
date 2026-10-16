@@ -159,6 +159,27 @@ edited, with the source in SETUP_PRESET_SOURCE (editing A067 gave `0c 03 80`,
 after a store and 1 after the next edit, but also read 1 for an unedited
 A001, so it isn't used.
 
+### Deleting a preset (2026-10-16-delete capture)
+
+Remote's "Delete preset" on A076 ("TESTCAP", the current preset, unedited):
+
+1. `04 69 n` → `04 0d 00` after ~0.8 s.
+2. `04 0e` → `04 0d 00` after ~1.4 s (the same commit as the IR delete: flash write done).
+3. Remote then re-reads the names (`04 09 81`): A076 and the edit buffer are
+   both "USER". No parameter or setup messages came.
+
+The slot then holds what every factory-empty "USER" slot holds
+(`EMPTY_PARAMS` in protocol.py, identical in the 36 empty slots of
+`backup/2026-10-15.json`): simulation mode, amp off, Brit VintC with mic A
+only (Dyn 57, distance 0, center 0), EQ and reverb off. So "empty" is just
+this default sound named "USER". `0x69` is in the exe's `Command<>` list and
+is probably `ClearPresetsCommand` ("DeletePresets" is a string too).
+`ResetPresetsCommand` is something else and stays unknown.
+
+Not seen: deleting a preset that isn't current, or one with unsaved edits.
+`torpedo clear` refuses the latter, and re-reads the parameters after
+clearing the current preset.
+
 ### IR transfers (2026-10-15-ir-upload capture)
 
 The IR bank is bank 1 (IR folder 0): the 86 "ML-FRMN-…" IRs, then uploads.
@@ -245,7 +266,7 @@ Not seen: footswitch settings from the SETUP menu (not tried).
 From the RTTI: `RebootableCommand<0x03>`, `<0x04>`, `<0x27>`, `UpdateFirmwareCommand`,
 `SecureEraseCommand`, `ClearPresetsCommand`, `ClearBankCommand`, factory reset.
 Their wire IDs are not mapped yet, so never send a command type that has not
-been observed in a capture. Writes seen so far: `01`, `03 80`, `04 73` (flash), `04 6c` + `04 0e` (IR delete, flash), `0c 00`–`0c 0e` setup, `6e`/`6f`/`70` (IR upload: flash for bank 1, preview slot otherwise), `7e`.
+been observed in a capture. Writes seen so far: `01`, `03 80`, `04 73` (flash), `04 69` + `04 0e` (preset delete, flash), `04 6c` + `04 0e` (IR delete, flash), `0c 00`–`0c 0e` setup, `6e`/`6f`/`70` (IR upload: flash for bank 1, preview slot otherwise), `7e`.
 
 Command IDs present in the exe (MSVC template args, decoded): `Command<>` 0x01,
 0x03, 0x04, 0x08, 0x09, 0x0A, 0x0B, 0x0E, 0x0F, 0x16, 0x27, 0x31, 0x38, 0x3A,

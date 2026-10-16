@@ -48,15 +48,19 @@ NAMES_ALL, NAMES_EDIT_BUFFER = 0x81, 0x80
 # answers ~2 s later: 03 n <name>, 0c 03 n, 0c 04 n, 0c 05 00.
 QUERY_STORE = 0x73
 EMPTY_PRESET = "USER"
+# 04 69 n: empty preset n, like Remote's Delete (a flash write; 04 0d 00, then
+# QUERY_COMMIT). It becomes "USER" with EMPTY_PARAMS; if n was the current
+# preset the edit buffer is renamed too, with no parameter messages.
+QUERY_CLEAR = 0x69
 
 # IR transfers (src/torpedo/ir.py has the format). Only bank 1 (IR folder 0)
 # has been seen taking uploads and deletes.
 MSG_IR_HEADER, MSG_IR_DATA, MSG_IR_END = 0x6E, 0x6F, 0x70
 QUERY_IR = 0x15  # 04 15 bank idx: download an IR (6e, 6e, 6f..., 70)
 QUERY_IR_DELETE = 0x6C  # 04 6c idx bank: delete; later IRs move down one place
-QUERY_IR_COMMIT = 0x0E  # 04 0e after an upload or delete; answered 04 0d 00 ~1 s later
+QUERY_COMMIT = 0x0E  # 04 0e after an IR upload or delete, or a QUERY_CLEAR; answered 04 0d 00 ~1 s later
 IR_ACK = 0x70  # device: 04 70 after the headers and after each 6f
-IR_STATUS = 0x0D  # device: 04 0d ..., 04 0d 00 when done
+STATUS = 0x0D  # device: 04 0d ..., 04 0d 00 when done
 IR_BANK = 1
 NAME_MAX = 25  # longest factory name; the real limit is unknown
 NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")  # seen in factory names
@@ -147,6 +151,12 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("EQ_L_FREQ_F4", *KNOB),
 ])]
 PARAM_BY_NAME = {p.name: p for p in PARAMS}
+# What every empty "USER" slot holds (backup/2026-10-15.json) and what
+# QUERY_CLEAR writes: simulation, amp off, Brit VintC with mic A only (Dyn 57,
+# distance 0, center 0), EQ and reverb off.
+EMPTY_PARAMS = [0, 4, 10, 64, 64, 1, 1, 0, 2, 0, 0, 0, 0, 5, 0, 0, 1, 0, 0, 20, 20, 20, 20, 20, 89,
+                0, 0, 63, 0, 10, 22, 22, 20, 89, 0, 95, 0, 0, 5, 0, 0, 1, 95, 0, 1, 57, 57, 57, 57,
+                57, 57]
 PRESET_MODE = PARAM_BY_NAME["PRESET_MODE"].index
 SIMULATION, ARCADE, IR = 0, 1, 2  # PRESET_MODE values; IR = two IR slots instead of a cab
 MODE_NAMES = {SIMULATION: "simulation", ARCADE: "arcade", IR: "ir"}

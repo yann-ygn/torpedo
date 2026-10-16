@@ -159,6 +159,11 @@ class PresetList(Vertical):
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         self.app.choose_preset(int(event.option.id))
 
+    @property
+    def highlighted(self) -> int | None:
+        option = self.query_one("#preset-list", OptionList).highlighted_option
+        return int(option.id) if option else None
+
 
 class SaveScreen(FormScreen):
     """Slot + name; returns (slot index, name)."""
@@ -205,6 +210,7 @@ class TorpedoApp(App):
         Binding("s", "save", "Save"),
         Binding("r", "rename", "Rename"),
         Binding("d", "discard", "Discard"),
+        Binding("delete", "clear", "Clear"),
         Binding("slash", "filter", "Filter"),
         Binding("f5", "reload", "Reload"),
         Binding("q", "quit", "Quit"),
@@ -495,6 +501,31 @@ class TorpedoApp(App):
                              self.saved)
         self.push_screen(TextScreen(f"Rename {preset_name(n)}", self.names[n].name, check_name),
                          renamed)
+
+    def action_clear(self):
+        """Empty the preset highlighted in the list, like Remote's Delete."""
+        n = self.query_one(PresetList).highlighted
+        if n is None or not self.names:
+            return
+        s, target = self.state, self.names[n]
+        if s.edited and s.source == n:
+            self.notify(f"{preset_name(n)} has unsaved edits: save (s) or discard (d) first",
+                        severity="warning")
+            return
+
+        def clear(yes: bool | None = True):
+            if yes:
+                self.run_job(lambda t: t.clear_preset(n), lambda names: self.cleared(n, names))
+        if target.empty:
+            clear()
+        else:
+            self.push_screen(ConfirmScreen(
+                f"Clear {preset_name(n)} \"{target.name}\"? It becomes an empty USER slot with "
+                "the default sound (flash write).", "Clear"), clear)
+
+    def cleared(self, n: int, names: list[PresetName]):
+        self.set_names(names)
+        self.notify(f"Cleared {preset_name(n)}")
 
     def action_discard(self):
         if not self.state.edited:

@@ -129,6 +129,16 @@ def cmd_rename(t: Torpedo, args):
     print(f"renamed {preset_name(saved.index)} to \"{saved.name}\"")
 
 
+def cmd_clear(t: Torpedo, args):
+    names = t.read_names()
+    n = args.preset
+    if not names[n].empty and not args.yes:
+        sys.exit(f"error: {preset_name(n)} holds \"{names[n].name}\"; add --yes to empty it "
+                 "(flash write)")
+    t.clear_preset(n)
+    print(f"cleared {preset_name(n)} (was \"{names[n].name}\"): now an empty USER slot")
+
+
 def parse_setup(s: str):
     name, sep, value = s.partition("=")
     option = SETUP_OPTIONS.get(name.lower().replace("-", "_"))
@@ -298,6 +308,8 @@ def cmd_restore(t: Torpedo, args):
         option = SETUP_OPTIONS[name]
         print(f"  setup {name}: {option.decode(current['setup'][name])} -> {option.decode(v)}")
     by_index = {p["index"]: p for p in current["presets"]}
+    for entry in plan.clears:
+        print(f"  {entry['label']}: \"{by_index[entry['index']]['name']}\" -> cleared ({EMPTY_PRESET})")
     for entry in plan.presets:
         now = by_index[entry["index"]]
         changed = sum(entry["params"][k] != v for k, v in now["params"].items())
@@ -308,8 +320,8 @@ def cmd_restore(t: Torpedo, args):
     if not plan:
         print("nothing to restore: the unit matches the backup")
     elif not args.apply:
-        print(f"dry run: {len(plan.presets)} presets would be stored (flash writes, ~3 s each); "
-              "add --apply to do it")
+        print(f"dry run: {len(plan.presets) + len(plan.clears)} presets would be stored or cleared "
+              "(flash writes, ~3 s each); add --apply to do it")
     else:
         backup.apply_restore(t, plan, show_progress("storing presets"))
         print("restored")
@@ -380,6 +392,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("rename", help="rename the current preset (must have no unsaved edits)")
     p.add_argument("name")
     p.set_defaults(func=cmd_rename)
+    p = sub.add_parser("clear", help="empty a preset like Remote's Delete: USER, default sound (flash write)")
+    p.add_argument("preset", type=parse_preset)
+    p.add_argument("--yes", action="store_true", help="needed unless the slot is already empty")
+    p.set_defaults(func=cmd_clear)
     sub.add_parser("tui", help="interactive terminal interface")
     return ap
 

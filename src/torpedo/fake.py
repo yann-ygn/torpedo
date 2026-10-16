@@ -9,13 +9,13 @@ capture raise, so tests also check that nothing unknown gets sent.
 from collections import deque
 
 from . import ir
-from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, IR_ACK, IR_BANK, IR_STATUS,
-                       MIC_SLOT, MSG_CAB, MSG_EMPTY, MSG_INFO, MSG_IR_DATA, MSG_IR_END,
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, EMPTY_PARAMS, EMPTY_PRESET,
+                       IR_ACK, IR_BANK, MIC_SLOT, MSG_CAB, MSG_EMPTY, MSG_INFO, MSG_IR_DATA, MSG_IR_END,
                        MSG_IR_HEADER, MSG_NAME, MSG_PARAM, MSG_POLL, MSG_QUERY, MSG_SETUP,
-                       NAMES_ALL, NAMES_EDIT_BUFFER, PRESET_MODE, PRESETS, QUERY_BANK, QUERY_INFO,
-                       QUERY_IR, QUERY_IR_COMMIT, QUERY_IR_DELETE, QUERY_NAMES, QUERY_PARAMS,
+                       NAMES_ALL, NAMES_EDIT_BUFFER, PRESET_MODE, PRESETS, QUERY_BANK, QUERY_CLEAR,
+                       QUERY_COMMIT, QUERY_INFO, QUERY_IR, QUERY_IR_DELETE, QUERY_NAMES, QUERY_PARAMS,
                        QUERY_SETUP, QUERY_STORE, REPORT_LEN, SETUP_OPTIONS, SETUP_PRESET,
-                       SETUP_PRESET_SOURCE)
+                       SETUP_PRESET_SOURCE, STATUS)
 
 # Read from the real unit (preset A001 and setup, 2026-10-15)
 A001 = [0, 5, 0, 127, 127, 1, 1, 0, 16, 0, 0, 0, 0, 5, 0, 17, 1, 1, 0, 21, 20, 20, 20, 21, 87,
@@ -68,7 +68,7 @@ class FakeHid:
     def __init__(self, lag: int = 0):
         self.lag = lag  # empty replies after a command before its messages show up
         self.held = 0
-        self.presets = [list(A001) for _ in range(PRESETS)]
+        self.presets = [list(EMPTY_PARAMS if name == EMPTY_PRESET else A001) for name in PRESET_NAMES]
         self.presets[1][CONTOUR] = self.presets[1][EQ_GAIN0] = self.presets[1][EQ_GAIN4] = 30
         self.presets[1][0x1A] = 3  # reverb room
         self.params = list(self.presets[0])
@@ -76,6 +76,7 @@ class FakeHid:
         self.names = list(PRESET_NAMES)
         self.buffer_name = self.names[0]
         self.stores: list[int] = []  # presets written to "flash"
+        self.clears: list[int] = []  # presets emptied
         self.irs = [(name, fake_ir(i)) for i, name in enumerate(ML_IRS)]  # bank 1
         self.upload: list[bytes] = []
         self.kept: tuple[int, list[int], str] | None = None  # the panel's "A001*": source, params, name
@@ -142,12 +143,12 @@ class FakeHid:
             assert h0[8] == len(self.irs) + 1, "upload slot = bank size + 1"
             self.irs.append(ir.parse_transfer(h0, h1, data, upload=True))  # checks checksums
             self.upload = []
-            self.queue.append(report(MSG_QUERY, IR_STATUS, 5, 0x10, 0x10))
+            self.queue.append(report(MSG_QUERY, STATUS, 5, 0x10, 0x10))
         elif cmd == MSG_QUERY and idx == QUERY_IR_DELETE and b[3] == IR_BANK and val < len(self.irs):
             del self.irs[val]
-            self.queue.append(report(MSG_QUERY, IR_STATUS, 0))
-        elif cmd == MSG_QUERY and idx == QUERY_IR_COMMIT:
-            self.queue.append(report(MSG_QUERY, IR_STATUS, 0))
+            self.queue.append(report(MSG_QUERY, STATUS, 0))
+        elif cmd == MSG_QUERY and idx == QUERY_COMMIT:
+            self.queue.append(report(MSG_QUERY, STATUS, 0))
         elif cmd == MSG_PARAM and idx < len(self.params):
             self._set_param(idx, val)
         elif cmd == MSG_SETUP and idx == SETUP_PRESET and val < PRESETS:
@@ -167,6 +168,8 @@ class FakeHid:
                 self.queue.append(self._name_report(EDIT_BUFFER))
         elif cmd == MSG_QUERY and idx == QUERY_STORE and val < PRESETS:
             self._store(val)
+        elif cmd == MSG_QUERY and idx == QUERY_CLEAR and val < PRESETS:
+            self._clear(val)
         else:
             raise AssertionError(f"fake: command never observed on the real device: {b[:4].hex(' ')}")
 
@@ -239,3 +242,13 @@ class FakeHid:
         self.setup[SETUP_PRESET] = self.setup[SETUP_PRESET_SOURCE] = n
         self.queue.extend([self._name_report(n), report(MSG_SETUP, SETUP_PRESET, n),
                            report(MSG_SETUP, SETUP_PRESET_SOURCE, n), report(MSG_SETUP, 5, 0)])
+
+    def _clear(self, n: int):
+        """2026-10-16-delete capture: only `04 0d 00`; the edit buffer of the
+        current preset gets renamed silently (its parameters reloading too is a guess)."""
+        self.presets[n] = list(EMPTY_PARAMS)
+        self.names[n] = EMPTY_PRESET
+        self.clears.append(n)
+        if self.setup[SETUP_PRESET] == n:
+            self.params, self.buffer_name = list(EMPTY_PARAMS), EMPTY_PRESET
+        self.queue.append(report(MSG_QUERY, STATUS, 0))

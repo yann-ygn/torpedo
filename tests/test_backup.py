@@ -58,7 +58,10 @@ def test_restore_subset_and_empty_slots(torpedo):
     torpedo.dev.names[6] = "RENAMED"
     current = backup.read_state(torpedo)
     plan = backup.plan_restore(saved, current, presets={75}, setup=False)
-    assert not plan.presets and "no command to empty a slot" in plan.skipped[0]
+    assert not plan.presets and [p["index"] for p in plan.clears] == [75]
+    backup.apply_restore(torpedo, plan)
+    assert torpedo.dev.clears == [75] and torpedo.dev.names[75] == "USER"
+    assert torpedo.preset == 2
     plan = backup.plan_restore(saved, current, presets={6})
     assert [p["index"] for p in plan.presets] == [6]
 

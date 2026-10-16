@@ -2,7 +2,7 @@ import pytest
 
 from torpedo.device import IgnoredWrite, Torpedo
 from torpedo.fake import A001, FakeHid
-from torpedo.protocol import EDIT_BUFFER, MSG_POLL, PARAMS, SETUP, SETUP_OPTIONS, find_param
+from torpedo.protocol import EDIT_BUFFER, EMPTY_PARAMS, MSG_POLL, PARAMS, SETUP, SETUP_OPTIONS, find_param
 
 CONTOUR = find_param("arcade_contour")
 PARAMS_ALL = frozenset(range(len(PARAMS)))
@@ -177,6 +177,33 @@ def test_save_refuses_to_overwrite(torpedo):
     assert torpedo.dev.stores == [], "nothing written"
     torpedo.save(3, overwrite=True)
     assert torpedo.dev.stores == [3] and torpedo.read_names()[3].name == "BDELUXE 1 RBN"
+
+
+def test_clear_another_preset(torpedo):
+    torpedo.read_params()
+    names = torpedo.clear_preset(3)
+    assert names[3].name == "USER" and names[3].empty and not names[3].arcade
+    assert torpedo.dev.clears == [3] and torpedo.dev.presets[3] == EMPTY_PARAMS
+    assert commands(torpedo)[-3:] == [bytes([4, 0x69, 3]), bytes([4, 0x0E, 0]), bytes([4, 9, 0x81])]
+    assert torpedo.preset == 0 and torpedo.params[0x20] == A001[0x20]
+
+
+def test_clear_current_preset_rereads_its_parameters(torpedo):
+    torpedo.read_params()
+    names = torpedo.clear_preset(0)
+    assert names[0].name == names[-1].name == "USER"
+    assert torpedo.params == dict(enumerate(EMPTY_PARAMS)) and not torpedo.edited
+
+
+def test_clear_refuses_a_preset_with_unsaved_edits(torpedo):
+    torpedo.set_param(CONTOUR, 22)
+    with pytest.raises(ValueError, match="unsaved edits"):
+        torpedo.clear_preset(0)
+    with pytest.raises(ValueError):
+        torpedo.clear_preset(128)
+    assert torpedo.dev.clears == []
+    torpedo.clear_preset(3)  # edits to another preset don't matter
+    assert torpedo.dev.clears == [3] and torpedo.edited
 
 
 def test_setup_options(torpedo):

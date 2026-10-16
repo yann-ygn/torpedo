@@ -34,12 +34,17 @@ reference implementation.
 - One-off scripts in `tools/` run with `uv run python tools/<x>.py`.
 - Preset names, save and rename are decoded (`presets`/`save`/`rename`,
   capture `2026-10-15-presets.log`); `save` (`04 73`) writes flash and refuses
-  non-empty slots without `--overwrite`. A076 "TESTCAP" is the user's scratch slot.
+  non-empty slots without `--overwrite`. A076 is the user's scratch slot ("TESTCAP", emptied
+  by the 2026-10-16 delete capture).
 - Global settings (level, mute, MIDI CC/PC/channel, S/PDIF output and rate)
   are decoded (`setup NAME=VALUE`, capture `2026-10-15-setup.log`).
+- `clear` empties a preset like Remote's Delete (`04 69 n` + `04 0e`, capture
+  `2026-10-16-delete.log`): renamed "USER" with the default sound
+  (`EMPTY_PARAMS`). TUI: Del on the highlighted preset. Only tested against FakeHid.
 - `backup`/`restore` (src/torpedo/backup.py): JSON of all 128 presets +
   global settings, read by selecting each preset; restore stores only the
-  presets that differ. Backups go in `backup/` and are committed (like klim).
+  presets that differ, and clears the slots that are empty in the backup.
+  Backups go in `backup/` and are committed (like klim).
 - IR download/upload/delete on bank 1 (`ir-get`/`ir-put`/`ir-delete`,
   src/torpedo/ir.py, capture `2026-10-15-ir-upload.log`), tested on the unit
   (bank 1 = the 86 ML IRs again). Not done: resampling, min-phase alignment.

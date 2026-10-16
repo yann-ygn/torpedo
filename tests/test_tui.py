@@ -154,6 +154,24 @@ async def test_save_into_empty_slot_and_overwrite_needs_confirmation(app, dev):
 
 
 @pytest.mark.asyncio
+async def test_clear_asks_first_unless_already_empty(app, dev):
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(app, pilot)
+        app.query_one("#preset-list").focus()
+        await pilot.press("down", "delete")  # A002
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmScreen)
+        await pilot.press("enter")  # focus is on Cancel
+        await settle(app, pilot)
+        assert dev.clears == []
+        await pilot.press("delete")
+        await pilot.pause()
+        await pilot.click("#yes")
+        await settle(app, pilot)
+        assert dev.clears == [1] and app.names[1].empty
+
+
+@pytest.mark.asyncio
 async def test_reconnects_after_unplug(app, dev):
     async with app.run_test(size=SIZE) as pilot:
         await settle(app, pilot)
