@@ -73,6 +73,7 @@ class Control:
     fmt: Callable[[int], str] = str  # SLIDER: value label
     ends: tuple[str, str] = ("", "")  # SLIDER: words at either end (cold ... hot)
     slot: int = 0  # IR_SLOT: 0 or 1
+    passing: int | None = None  # on/off CHOICE: the value that lets the sound through
     when: Callable[[Values], bool] | None = None  # shown only if true...
     otherwise: Callable[[Values], str] | None = None  # ...else this text instead
 
@@ -99,7 +100,7 @@ class Section:
 
 
 def on_off(name: str) -> Control:
-    return Control(name, CHOICE, OFF_ON)
+    return Control(name, CHOICE, OFF_ON, passing=1)
 
 
 def single(label: str, name: str, **kw) -> Row:
@@ -112,8 +113,8 @@ def pair(label: str, a: str, b: str, **kw) -> Row:
 
 POWER_AMP = Section("POWER AMP", on_off("SIMUAMP"), Control("SIMUAMP_MODELE", CHOICE, AMPS), rows=(
     single("Volume", "SIMUAMP_GAIN"),
-    single("Depth", "SIMUAMP_DEPTH"),
-    single("Presence", "SIMUAMP_CONTOUR"),
+    single("Depth", "SIMUAMP_DEPTH", fmt=percent_127),
+    single("Presence", "SIMUAMP_CONTOUR", fmt=percent_127),
     single("Character", "SIMUAMP_CHARACTER", kind=CHOICE, choices=CHARACTER),
 ))
 
@@ -142,7 +143,7 @@ SIMULATION_LAYOUT = (
         pair("Axis", "SIMUHP_CENTER", "SIMUHP_CENTER_2", fmt=percent_127),
         pair("Level", "SIMUHP_LEVEL", "SIMUHP_LEVEL_2", fmt=level_db),
         pair("Phase", "SIMUHP_PHASE", "SIMUHP_PHASE_2", kind=CHOICE, choices=PHASE),
-        pair("Mute", "SIMUHP_MUTE", "SIMUHP_MUTE_2", kind=CHOICE, choices=OFF_ON),
+        pair("Mute", "SIMUHP_MUTE", "SIMUHP_MUTE_2", kind=CHOICE, choices=OFF_ON, passing=0),
     )),
     PRESET_LEVEL,
 )
@@ -157,7 +158,7 @@ IR_LAYOUT = (
     Section("IR MIX", columns=("IR A", "IR B"), rows=(
         pair("Level", "SIMUHP_LEVEL", "SIMUHP_LEVEL_2", fmt=level_db),
         pair("Phase", "SIMUHP_PHASE", "SIMUHP_PHASE_2", kind=CHOICE, choices=PHASE),
-        pair("Mute", "SIMUHP_MUTE", "SIMUHP_MUTE_2", kind=CHOICE, choices=OFF_ON),
+        pair("Mute", "SIMUHP_MUTE", "SIMUHP_MUTE_2", kind=CHOICE, choices=OFF_ON, passing=0),
     )),
     PRESET_LEVEL,
 )

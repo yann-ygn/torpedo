@@ -175,11 +175,15 @@ class Slider(Value):
 
 class Choice(Value):
     """One of `options`. Up to 3 options are all shown inline (Enter/Space cycles);
-    longer lists show the current one and Enter opens a picker (`Pick`)."""
+    longer lists show the current one and Enter opens a picker (`Pick`).
+    An on/off gets `passing`, the value that lets the sound through: shown
+    green when selected, the other one red."""
 
-    COMPONENT_CLASSES = {"choice--on"}
+    COMPONENT_CLASSES = {"choice--on", "choice--passing", "choice--blocking"}
     DEFAULT_CSS = """
     Choice > .choice--on { color: $background; background: $accent; text-style: bold; }
+    Choice > .choice--passing { color: $background; background: $success; text-style: bold; }
+    Choice > .choice--blocking { color: $background; background: $error; text-style: bold; }
     Choice:disabled > .choice--on { color: $background; background: $foreground 35%; }
     """
     BINDINGS = [
@@ -194,10 +198,11 @@ class Choice(Value):
             self.widget = widget
 
     def __init__(self, options: list[str] | tuple[str, ...], tag=None, *, inline: bool | None = None,
-                 **kw):
+                 passing: int | None = None, **kw):
         super().__init__(tag, **kw)
         self.options = list(options)
         self.inline = len(self.options) <= 3 if inline is None else inline
+        self.passing = passing
 
     def set_options(self, options: list[str]):
         if options != self.options:
@@ -215,7 +220,9 @@ class Choice(Value):
         if not self.inline:
             return Text(f"{self.label()} ▾")
         text = Text()
-        on = self.get_component_rich_style("choice--on")
+        on = self.get_component_rich_style(
+            "choice--on" if self.passing is None or self.disabled
+            else "choice--passing" if self.value == self.passing else "choice--blocking")
         for i, o in enumerate(self.options):
             text.append(f" {o} ", style=on if i == self.value else "")
             text.append(" ")

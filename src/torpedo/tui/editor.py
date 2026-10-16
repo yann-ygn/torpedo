@@ -15,7 +15,7 @@ def make_widget(c: Control, **kw) -> Value:
         p = PARAMS[c.index]
         return Slider(p.lo, p.hi, c, fmt=c.fmt, ends=c.ends, **kw)
     if c.kind == CHOICE:
-        return Choice(c.choices, c, **kw)
+        return Choice(c.choices, c, passing=c.passing, **kw)
     return Choice([], c, inline=False, **kw)  # CAB, MIC, IR_SLOT: options come from the unit
 
 

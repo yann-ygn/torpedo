@@ -175,6 +175,7 @@ class SetupPane(TabPane):
     LABELS = {"level": "Output level", "mute": "Mute", "spdif_freq": "S/PDIF rate (kHz)",
               "midi_cc": "MIDI CC", "midi_pc": "MIDI PC", "midi_channel": "MIDI channel",
               "output": "S/PDIF L/R"}
+    PASSING = {"mute": 0, "midi_cc": 1, "midi_pc": 1}  # on/off: the value shown green
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
@@ -182,7 +183,8 @@ class SetupPane(TabPane):
                 with Horizontal(classes="opt"):
                     yield Label(self.LABELS.get(o.name, o.name))
                     if o.choices:
-                        yield Choice(o.choices, o, inline=len(o.choices) <= 4)
+                        yield Choice(o.choices, o, inline=len(o.choices) <= 4,
+                                     passing=self.PASSING.get(o.name))
                     else:
                         yield Slider(o.lo, o.hi, o, fmt=level_db if o.name == "level" else str)
 
