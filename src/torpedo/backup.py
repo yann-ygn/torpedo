@@ -2,9 +2,9 @@
 
 The unit has no "send me preset n" query: each preset is read by selecting it
 (0c 03 n) and reading its parameters (04 0a), then the original preset is
-selected again. Restoring goes through the edit buffer: switch it to
-simulation mode (which accepts every parameter), write the values, restore
-the mode, check every parameter, then store it (04 73 n, a flash write).
+selected again. Restoring goes through the edit buffer
+(`Torpedo.write_params`: every value, checked), then stores it (04 73 n, a
+flash write).
 Slots empty in the backup are emptied with 04 69 n instead, like Remote's
 Delete. Only presets that differ from the unit are written. Cab and IR data can't be
 read back, so they aren't part of a backup.
@@ -16,8 +16,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .device import Torpedo
-from .protocol import (EMPTY_PARAMS, EMPTY_PRESET, PARAM_BY_NAME, PARAMS, PRESET_MODE, PRESETS, SETUP,
-                       SETUP_OPTIONS, SIMULATION, check_name, preset_name)
+from .protocol import (EMPTY_PARAMS, EMPTY_PRESET, PARAM_BY_NAME, PARAMS, PRESETS, SETUP,
+                       SETUP_OPTIONS, check_name, preset_name)
 
 FORMAT, VERSION = "torpedo-backup", 1
 Progress = Callable[[int, int], None]
@@ -135,26 +135,18 @@ def apply_restore(t: Torpedo, plan: Plan, progress: Progress | None = None):
     start = t.preset
     for name, v in plan.setup.items():
         t.set_setup(SETUP_OPTIONS[name], v)
-    mode = PARAMS[PRESET_MODE]
     for i, entry in enumerate(plan.clears):
         t.clear_preset(entry["index"])
         if progress:
             progress(i + 1, len(plan.clears) + len(plan.presets))
     try:
         for i, entry in enumerate(plan.presets):
-            target = entry["params"]
             t.select_preset(entry["index"])
-            t.set_param(mode, SIMULATION)  # accepts every parameter, recomputes nothing
-            for p in PARAMS:
-                if p.writable and p.index != PRESET_MODE:
-                    t.set_param(p, target[p.name])
-            t.set_param(mode, target["PRESET_MODE"])
-            values = t.read_params()
-            wrong = [p.name for p in PARAMS if values[p.index] != target[p.name]]
-            if wrong:
+            try:
+                t.write_params({p.index: entry["params"][p.name] for p in PARAMS})
+            except RuntimeError as e:
                 t.discard()
-                raise RuntimeError(f"{entry['label']}: {', '.join(wrong)} didn't take the "
-                                   "backup's value, nothing stored for it")
+                raise RuntimeError(f"{entry['label']}: {e}, nothing stored for it") from None
             t.save(entry["index"], entry["name"], overwrite=True)
             if progress:
                 progress(len(plan.clears) + i + 1, len(plan.clears) + len(plan.presets))

@@ -2,7 +2,7 @@ import argparse
 import os
 import sys
 
-from . import backup, ir
+from . import backup, ir, presetfile
 from .device import FOLDERS, MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
 from .protocol import (ARCADE, ARCADE_EDITABLE, EMPTY_PRESET, FOLDER_BANK_OFFSET, IR, MODE_NAMES,
                        PARAM_BY_NAME, PARAMS, PRESET_MODE, PRESETS, SETUP, SETUP_OPTIONS, Cab,
@@ -137,6 +137,27 @@ def cmd_clear(t: Torpedo, args):
                  "(flash write)")
     t.clear_preset(n)
     print(f"cleared {preset_name(n)} (was \"{names[n].name}\"): now an empty USER slot")
+
+
+def cmd_export(t: Torpedo, args):
+    preset = presetfile.export(t, args.preset)
+    presetfile.save_file(preset, args.file)
+    what = "the current sound" if args.preset is None else preset_name(args.preset)
+    print(f"exported {what} \"{preset['name']}\" to {args.file}")
+
+
+def cmd_import(t: Torpedo, args):
+    preset = presetfile.load_file(args.file)
+    if args.preset is not None:
+        names = t.read_names()
+        if not names[args.preset].empty and not args.overwrite:
+            sys.exit(f"error: {preset_name(args.preset)} holds \"{names[args.preset].name}\"; "
+                     "add --overwrite to replace it")
+    name = presetfile.import_preset(t, preset, args.preset, overwrite=args.overwrite)
+    if args.preset is None:
+        print(f"loaded \"{name}\" as the current sound (unsaved: `torpedo save` stores it)")
+    else:
+        print(f"imported \"{name}\" into {preset_name(args.preset)}")
 
 
 def parse_setup(s: str):
@@ -396,6 +417,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("preset", type=parse_preset)
     p.add_argument("--yes", action="store_true", help="needed unless the slot is already empty")
     p.set_defaults(func=cmd_clear)
+    p = sub.add_parser("export", help="save the current sound (or a preset) to a preset file")
+    p.add_argument("file")
+    p.add_argument("preset", nargs="?", type=parse_preset)
+    p.set_defaults(func=cmd_export)
+    p = sub.add_parser("import", help="load a preset file as the current sound, or store it into PRESET")
+    p.add_argument("file")
+    p.add_argument("preset", nargs="?", type=parse_preset)
+    p.add_argument("--overwrite", action="store_true", help="allow replacing a non-empty preset")
+    p.set_defaults(func=cmd_import)
     sub.add_parser("tui", help="interactive terminal interface")
     return ap
 

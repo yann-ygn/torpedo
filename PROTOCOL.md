@@ -84,7 +84,9 @@ is the global cab-sim toggle. Loading an IR into slot n: Remote sends
 SIMUHP_PREVIEW = 0, SIMUHP_FOLDER_IR_n = 0, then SIMUHP_WAVEn = index (`01 09
 55` = ML IR 85 "ML-FRMN-V30-906-E", `01 0a 0f` = ML IR 15), then `04 15 01
 idx` for the waveform. Folder 0 = bank 1 (ML); other folders are presumably
-the user banks 2–4, empty here. Per-slot controls are the mic A/B ones:
+the user banks 2–4, empty here. Remote's Live UI offers no way to use them (the
+IR manager only lists bank 1), so they may be for other Two notes products
+sharing the protocol. Per-slot controls are the mic A/B ones:
 SIMUHP_LEVEL/PHASE/MUTE for slot 1, `_2` for slot 2. The amp, EQ and reverb
 use the same parameters as simulation mode.
 

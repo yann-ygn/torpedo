@@ -14,9 +14,14 @@ uv run torpedo presets                       # preset names (--all: also the emp
 uv run torpedo save --name "my crunch"       # store into the first empty USER slot
 uv run torpedo save A080 --overwrite         # replace a preset (refused without --overwrite)
 uv run torpedo rename "my crunch 2"          # rename the current preset (no unsaved edits)
+uv run torpedo clear A080 --yes              # empty a preset like Remote's Delete (USER, default sound)
 uv run torpedo ir-get v30-906-e out.wav       # download an IR (float WAV, like Remote's export)
 uv run torpedo ir-put my-cab.wav --align min-latency   # upload a 48 kHz WAV to the IR bank
 uv run torpedo ir-delete MY-CAB              # exact name; refuses if later IRs would renumber
+uv run torpedo export presets/crunch.json      # the current sound (unsaved edits included) to a preset file
+uv run torpedo export presets/a002.json A002   # or a stored preset
+uv run torpedo import presets/crunch.json      # load it as the current sound (unsaved; then `save`)
+uv run torpedo import presets/crunch.json A080 # or store it into a slot (--overwrite if used)
 uv run torpedo backup backup/today.json      # all presets + global settings (~20 s)
 uv run torpedo restore backup/today.json     # dry run: what differs (--apply writes it)
 uv run torpedo restore backup/today.json --presets A076,A080 --no-setup --apply
@@ -37,12 +42,14 @@ stores it. `save` writes into an empty "USER" slot unless told to
 `--overwrite`; names are uppercased, A-Z, 0-9 and spaces, up to 25
 characters (what the factory names use). Every value is range-checked before anything
 is sent, and in arcade mode the parameters the Torpedo would ignore are
-refused (see `src/torpedo/protocol.py`).
+refused (see `src/torpedo/protocol.py`). `clear` empties a preset the way
+Remote's Delete does: it becomes a "USER" slot with the default sound every
+empty slot holds (Brit VintC, one Dyn 57, amp/EQ/reverb off); `--yes` is
+needed unless it is already empty.
 
 Presets have three modes (PRESET_MODE): 0 = simulation (one cab, two mics),
 1 = arcade (simplified controls driving the simulation ones), 2 = IR (two IR
-slots). IR slots can load from the ML bank; the user IR banks are empty on
-our unit, so they aren't supported yet.
+slots). IR slots load from the IR bank (the ML IRs and your uploads).
 
 The Torpedo has one cab and two mics (A and B) picked from that cab's own 8
 mics. `cab` keeps each mic on the same mic when the new cab has it, like
@@ -55,7 +62,7 @@ simulation mode, since arcade mode ignores mic B.
 right, laid out like Torpedo Remote's rack for the preset's mode. ↑/↓ move
 between rows, ←/→ change a value (shift: ×10), Enter types a number or opens
 a filterable list (cab, mic, IR, amp, room), Space toggles. `s` saves, `r`
-renames, `d` discards, `/` filters the presets. In arcade mode, the
+renames, `d` discards, Del clears the highlighted preset, `/` filters the presets. In arcade mode, the
 simulation values arcade computes are listed under its controls, read-only.
 Changes made on the unit's front panel show up (highlighted for a second),
 and the TUI reconnects by itself after a replug.
@@ -70,15 +77,26 @@ normalization, then reads the upload back to check it. Resampling and Remote's
 "Min phase" alignment aren't implemented. Deleting an IR moves the following
 ones down a place, and presets using them would then play the next IR.
 
+## Preset files
+
+`export`/`import` keep single sounds as small JSON files, to keep or share
+them. Unlike backups, they name the cab, the mics and the IRs instead of
+using bank positions, which differ between units and firmware versions:
+`import` looks the names up on this unit and refuses the file (sending
+nothing) if the preset's mode needs one the unit doesn't have. Only the cab
+and mics count in simulation and arcade mode, only the IRs in IR mode. This
+isn't Torpedo Remote's `.top` format. The TUI's "Preset files" tab does the
+same from a folder (`presets/` by default).
+
 ## Backup
 
 `backup` selects each preset in turn to read it (the unit has no other way
 to send a stored preset), then goes back to the current one. `restore`
 compares the file with the unit and only stores the presets that differ, so
-a restore that changes one preset writes one. Cab and IR data aren't
-included, and an empty "USER" slot in the backup can't empty a slot that is
-used now (no erase command is known). Both refuse to run while the current
-preset has unsaved edits.
+a restore that changes one preset writes one; a slot that is empty in the
+backup gets cleared like `clear` does. Cab and IR data aren't included, and
+presets point at cabs and IRs by bank position, so a backup is meant for the
+unit it came from. Both refuse to run while the current preset has unsaved edits.
 
 ## Linux
 

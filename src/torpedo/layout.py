@@ -27,7 +27,7 @@ EQ_BANDS = {0: ("120 Hz", "360 Hz", "800 Hz", "2 kHz", "6 kHz"),
             1: ("50 Hz", "120 Hz", "360 Hz", "800 Hz", "4 kHz")}
 MODES = ("simulation", "arcade", "ir")  # PRESET_MODE
 OFF_ON = ("off", "on")
-CHARACTER = ("triode", "pentode")  # (?) A001 = 1, Remote's switch looked up (pentode)
+CHARACTER = ("triode", "pentode")  # checked on the unit (2026-10-16)
 SIDE = ("back", "front")  # checked on the unit (2026-10-16)
 PHASE = ("normal", "inverted")
 GUITAR_BASS = ("guitar", "bass")

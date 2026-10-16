@@ -18,7 +18,7 @@ from ..layout import (ARCADE_LAYOUT, CAB, IR_LAYOUT, IR_SLOT, LAYOUTS, MIC, MODE
 from ..protocol import (EDIT_BUFFER, MSG_PARAM, PARAMS, PRESET_MODE, PRESETS, SETUP_PRESET,
                         SETUP_OPTIONS, SETUP_PRESET_SOURCE, Cab, PresetName, check_name, preset_name)
 from .editor import Editor
-from .panes import BackupPane, IrPane, SetupPane
+from .panes import BackupPane, IrPane, PresetFilesPane, SetupPane
 from .widgets import Choice, ConfirmScreen, FormScreen, PickerScreen, TextScreen, Value
 
 DEBOUNCE = 0.15  # seconds; sliders only write once they settle
@@ -250,6 +250,7 @@ class TorpedoApp(App):
                             with VerticalScroll(id="mode-2"):
                                 yield Editor(IR_LAYOUT)
             yield IrPane("IRs", id="irs")
+            yield PresetFilesPane("Preset files", id="files")
             yield SetupPane("Setup", id="setup")
             yield BackupPane("Backup", id="backup")
         yield Footer()

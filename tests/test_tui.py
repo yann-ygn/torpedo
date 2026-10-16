@@ -7,6 +7,7 @@ from torpedo.protocol import (ARCADE, ARCADE_EDITABLE, MSG_PARAM, MSG_POLL, MSG_
                               PRESET_MODE, SIMULATION, find_param)
 from torpedo.tui.app import TorpedoApp
 from torpedo.tui.editor import Editor
+from torpedo.tui.panes import PresetFilesPane
 from torpedo.tui.widgets import ConfirmScreen, PickerScreen, Value
 
 CONTOUR = find_param("arcade_contour").index
@@ -169,6 +170,24 @@ async def test_clear_asks_first_unless_already_empty(app, dev):
         await pilot.click("#yes")
         await settle(app, pilot)
         assert dev.clears == [1] and app.names[1].empty
+
+
+@pytest.mark.asyncio
+async def test_preset_file_export_then_load(app, dev, tmp_path):
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(app, pilot)
+        pane = app.query_one(PresetFilesPane)
+        pane.query_one("#presets-dir").value = str(tmp_path)
+        pane.export()
+        await settle(app, pilot)
+        assert (tmp_path / "BDELUXE 1 RBN.json").exists()
+        pane.rescan()
+        app.choose_preset(1)
+        await settle(app, pilot)
+        pane.load()
+        await settle(app, pilot)
+        assert dev.params == dev.presets[0] and dev.buffer_name == "BDELUXE 1 RBN"
+        assert app.state.edited and dev.stores == []
 
 
 @pytest.mark.asyncio

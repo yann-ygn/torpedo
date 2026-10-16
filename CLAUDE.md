@@ -16,17 +16,16 @@ reference implementation.
   arcade/simulation rules), `device.py` (transport + cache), `fake.py` (report-level emulator,
   raises on unobserved commands), `cli.py` (info/params/get/set/preset/discard/setup).
   Verified on the unit.
-- TUI on branch `tui` (2026-10-16, `torpedo tui`, `src/torpedo/tui/`): preset list +
+- TUI (2026-10-16, `torpedo tui`, `src/torpedo/tui/`, merged): preset list +
   editor in Remote's rack order, overlay pickers, arcade shows the computed
   simulation values dimmed; IRs/Setup/Backup tabs. The editor is driven by
-  `src/torpedo/layout.py` (no Textual, meant for the MPC plugin too). Only
-  tested against FakeHid so far. CHARACTER (triode/pentode) and SIDE
-  (front/back) labels are guesses from screenshots.
+  `src/torpedo/layout.py` (no Textual, meant for the MPC plugin too). Used on
+  the unit; CHARACTER (triode/pentode) and SIDE (back/front) labels checked there.
 - Ranges come from a min/max sweep capture (`captures/2026-10-15-ranges.log`,
   `tools/ranges.py`). Cab selection from bank 0 works (`cabs`/`cab`, capture
   `2026-10-15-cabs.log`); IR mode (PRESET_MODE=2) slots load from the ML bank
-  (`ir`, capture `2026-10-15-irs.log`); user IR banks 2–4 are empty here, so
-  FOLDER_IR stays pinned to 0. The ranges capture also
+  (`ir`, capture `2026-10-15-irs.log`); user IR banks 2–4 are empty here and
+  Remote's Live UI never shows them (other products?), so FOLDER_IR stays pinned to 0. The ranges capture also
   showed setup writes (`0c 00` level, `0c 01` mute) and a cab preview upload
   (`6e`/`6f`/`70`), not implemented yet.
 - Arcade mode only accepts writes to `ARCADE_EDITABLE` (protocol.py, probed
@@ -40,11 +39,17 @@ reference implementation.
   are decoded (`setup NAME=VALUE`, capture `2026-10-15-setup.log`).
 - `clear` empties a preset like Remote's Delete (`04 69 n` + `04 0e`, capture
   `2026-10-16-delete.log`): renamed "USER" with the default sound
-  (`EMPTY_PARAMS`). TUI: Del on the highlighted preset. Only tested against FakeHid.
+  (`EMPTY_PARAMS`). TUI: Del on the highlighted preset. Tested on the unit.
 - `backup`/`restore` (src/torpedo/backup.py): JSON of all 128 presets +
   global settings, read by selecting each preset; restore stores only the
   presets that differ, and clears the slots that are empty in the backup.
   Backups go in `backup/` and are committed (like klim).
+- Preset files (2026-10-16, `export`/`import`, src/torpedo/presetfile.py, TUI
+  "Preset files" tab): our own JSON, one sound per file, cab/mics/IRs by name
+  (backups keep bank positions: they are one unit's state). Import refuses a
+  file whose mode needs a cab/mic/IR the unit lacks. Remote's `.top` format
+  (XML, `TOP_*` tags) was looked at and deliberately not supported: Remote
+  pulls missing cabs from the Two notes store, which we don't touch.
 - IR download/upload/delete on bank 1 (`ir-get`/`ir-put`/`ir-delete`,
   src/torpedo/ir.py, capture `2026-10-15-ir-upload.log`), tested on the unit
   (bank 1 = the 86 ML IRs again). Not done: resampling, min-phase alignment.

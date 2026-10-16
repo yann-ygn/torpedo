@@ -19,7 +19,7 @@ from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, EMPTY_PRE
                        PARAM_BY_NAME, PRESETS, PRESET_MODE, QUERY_BANK, QUERY_CLEAR, QUERY_COMMIT,
                        QUERY_INFO, QUERY_IR, QUERY_IR_DELETE, QUERY_NAMES, QUERY_PARAMS,
                        QUERY_SETUP, QUERY_STORE, REPORT_LEN, SETUP, SETUP_OPTIONS, SETUP_PRESET,
-                       SETUP_PRESET_SOURCE, STATUS, Cab, Param, PresetName, SetupOption,
+                       SETUP_PRESET_SOURCE, SIMULATION, STATUS, Cab, Param, PresetName, SetupOption,
                        check_name, parse_cab, parse_name, preset_name)
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
@@ -256,6 +256,35 @@ class Torpedo:
                               until=lambda p: p[:2] == reply)
         return next(parse_name(p) for p in msgs if p[:2] == reply)
 
+    def rename_buffer(self, name: str, current: str | None = None):
+        """Name the edit buffer (`03 80`), which `save` then stores with it."""
+        name = check_name(name)
+        if current is None:
+            current = self.read_buffer_name()
+        if name == current:  # renaming to the same name gets no reply (PROTOCOL.md)
+            return
+        echo = bytes([MSG_NAME, EDIT_BUFFER])
+        self._exchange(MSG_NAME, EDIT_BUFFER, *name.encode("ascii"),
+                       until=lambda p: p[:2] == echo and parse_name(p) == name)
+
+    def write_params(self, values: dict[int, int]):
+        """Make the current sound `values` (every writable parameter; unsaved),
+        then read everything back to check it. Goes through simulation mode,
+        which accepts every parameter and recomputes nothing."""
+        for p in PARAMS:
+            if p.writable:
+                p.check(values[p.index])
+        mode = PARAMS[PRESET_MODE]
+        self.set_param(mode, SIMULATION)
+        for p in PARAMS:
+            if p.writable and p.index != PRESET_MODE:
+                self.set_param(p, values[p.index])
+        self.set_param(mode, values[PRESET_MODE])
+        now = self.read_params()
+        wrong = [p.name for p in PARAMS if p.writable and now[p.index] != values[p.index]]
+        if wrong:
+            raise RuntimeError(f"{', '.join(wrong)} didn't take the value sent")
+
     def save(self, n: int, name: str | None = None, overwrite: bool = False,
              names: list[PresetName] | None = None) -> PresetName:
         """Store the current sound (edit buffer) into preset `n`, optionally renamed.
@@ -272,11 +301,7 @@ class Torpedo:
                              "pass overwrite=True to replace it")
         current = names[-1].name if names is not None else self.read_buffer_name()
         name = check_name(name) if name is not None else current
-        if name != current:  # renaming to the same name gets no reply (PROTOCOL.md)
-            encoded = name.encode("ascii")
-            echo = bytes([MSG_NAME, EDIT_BUFFER])
-            self._exchange(MSG_NAME, EDIT_BUFFER, *encoded,
-                           until=lambda p: p[:2] == echo and parse_name(p) == name)
+        self.rename_buffer(name, current)
         # The reply starts with `03 n <name>`; `0c 03 n` follows in the same burst,
         # but may not come if preset n was already selected unedited.
         stored = (bytes([MSG_NAME, n]), bytes([MSG_SETUP, SETUP_PRESET, n]))

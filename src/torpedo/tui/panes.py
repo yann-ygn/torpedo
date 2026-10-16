@@ -1,4 +1,4 @@
-"""The tabs besides the editor: IR bank, global settings, backup/restore."""
+"""The tabs besides the editor: IR bank, preset files, global settings, backup/restore."""
 
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +9,7 @@ from textual.widgets import (Button, DirectoryTree, Input, Label, OptionList, Pr
                              TabPane)
 from textual.widgets.option_list import Option
 
-from .. import backup, ir
+from .. import backup, ir, presetfile
 from ..layout import level_db
 from ..protocol import IR_BANK, SETUP_OPTIONS, Cab, SetupOption
 from .widgets import Choice, ConfirmScreen, Slider, Value
@@ -204,6 +204,100 @@ class SetupPane(TabPane):
             write()
 
 
+class PresetFilesPane(TabPane):
+    DEFAULT_CSS = """
+    PresetFilesPane > VerticalScroll { padding: 0 2; }
+    PresetFilesPane .field { margin-top: 1; color: $text-muted; width: 1fr; }
+    PresetFilesPane .row { height: auto; margin-top: 1; }
+    PresetFilesPane #presets-dir { width: 1fr; }
+    PresetFilesPane #preset-files { height: 12; margin-top: 1; }
+    PresetFilesPane Button { margin-right: 1; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll():
+            yield Label("Preset files folder", classes="field")
+            with Horizontal(classes="row"):
+                yield Input("presets", id="presets-dir")
+                yield Button("Rescan", id="presets-rescan")
+            yield OptionList(id="preset-files")
+            with Horizontal(classes="row"):
+                yield Button("Export current sound", variant="primary", id="export")
+                yield Button("Load selected", id="load")
+            yield Label("A preset file holds one sound, with its cab, mics and IRs by name so "
+                        "it loads on another unit too; a file whose cab or IRs this unit "
+                        "doesn't have is refused. Loading replaces the current sound without "
+                        "storing it: press s to save it into a slot.", classes="field")
+
+    def on_mount(self):
+        self.rescan()
+
+    @property
+    def base(self) -> Path:
+        return Path(self.query_one("#presets-dir", Input).value.strip() or ".")
+
+    def rescan(self):
+        files = sorted(self.base.glob("*.json")) if self.base.is_dir() else []
+        options = self.query_one("#preset-files", OptionList)
+        options.clear_options()
+        for f in files:
+            options.add_option(Option(f.name, id=str(f)))
+        if files:
+            options.highlighted = 0
+        self.query_one("#load", Button).disabled = not files
+
+    def on_input_submitted(self, event: Input.Submitted):
+        self.rescan()
+
+    def on_button_pressed(self, event: Button.Pressed):
+        {"presets-rescan": self.rescan, "export": self.export,
+         "load": self.load}[event.button.id]()
+
+    def export(self):
+        if not self.app.names:
+            return
+        name = self.app.names[-1].name  # the edit buffer's
+        path = self.base / f"{name}.json"
+
+        def write(yes: bool | None = True):
+            if not yes:
+                return
+
+            def job(t):
+                preset = presetfile.export(t)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                presetfile.save_file(preset, path)
+
+            def done(_):
+                self.app.notify(f"Exported \"{name}\" to {path}", title="Export")
+                self.rescan()
+            self.app.run_job(job, done)
+        if path.exists():
+            self.app.push_screen(ConfirmScreen(f"Replace {path}?", "Replace"), write)
+        else:
+            write()
+
+    def load(self):
+        options = self.query_one("#preset-files", OptionList)
+        if options.highlighted is None:
+            return
+        path = Path(options.get_option_at_index(options.highlighted).id)
+        try:
+            preset = presetfile.load_file(path)
+        except (ValueError, OSError) as e:
+            self.app.notify(str(e), severity="error")
+            return
+        if self.app.state.edited:
+            self.app.notify("The current preset has unsaved edits, and loading would replace "
+                            "them: save (s) or discard (d) first", severity="warning")
+            return
+
+        def done(names):
+            self.app.set_names(names)
+            self.app.notify(f"Loaded \"{preset['name']}\" (unsaved: s stores it)", title="Load")
+        self.app.run_job(lambda t: (presetfile.import_preset(t, preset), t.read_names())[1], done)
+
+
 def find_backups(base: Path) -> list[Path]:
     return sorted(base.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True) if base.is_dir() else []
 
@@ -299,6 +393,7 @@ class BackupPane(TabPane):
             names = {p["index"]: p["name"] for p in current["presets"]}
             lines = [f"setup {k}: {SETUP_OPTIONS[k].decode(current['setup'][k])} -> "
                      f"{SETUP_OPTIONS[k].decode(v)}" for k, v in plan.setup.items()]
+            lines += [f"{e['label']}: \"{names[e['index']]}\" -> cleared" for e in plan.clears]
             lines += [f"{e['label']}: \"{names[e['index']]}\" -> \"{e['name']}\"" for e in plan.presets]
             lines += [f"skipped {s}" for s in plan.skipped]
             shown = "\n".join(lines[:15]) + (f"\n... ({len(lines) - 15} more)" if len(lines) > 15 else "")
@@ -311,6 +406,6 @@ class BackupPane(TabPane):
                                      lambda _: (self.app.notify("Restored", title="Restore"),
                                                 self.app.action_reload()))
             self.app.push_screen(ConfirmScreen(
-                f"Restore {path.name}? {len(plan.presets)} presets would be stored (flash "
-                f"writes, ~3 s each):\n\n{shown}{serial}", "Restore"), answered)
+                f"Restore {path.name}? {len(plan.presets) + len(plan.clears)} presets would be "
+                f"stored or cleared (flash writes, ~3 s each):\n\n{shown}{serial}", "Restore"), answered)
         self.app.run_job(plan_job, planned)

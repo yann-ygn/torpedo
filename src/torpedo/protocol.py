@@ -161,7 +161,8 @@ PRESET_MODE = PARAM_BY_NAME["PRESET_MODE"].index
 SIMULATION, ARCADE, IR = 0, 1, 2  # PRESET_MODE values; IR = two IR slots instead of a cab
 MODE_NAMES = {SIMULATION: "simulation", ARCADE: "arcade", IR: "ir"}
 # IR slot n = SIMUHP_FOLDER_IR_n (folder) + SIMUHP_WAVEn (index in that folder's
-# bank). Folder 0 = bank 1 (ML IRs); folder f = bank f + 1 is a guess.
+# bank). Folder 0 = bank 1 (ML IRs); folder f = bank f + 1 is a guess. Remote's
+# Live UI shows no other IR folder: banks 2-4 may be for other Two notes products.
 FOLDER_BANK_OFFSET = 1
 
 # Arcade mode is a front end over the same parameters: its 6 ARCADE_* macros
