@@ -67,6 +67,17 @@ reference implementation.
   everything (capture `2026-10-16-unplug.log`). `discard` doesn't clear the
   unit's kept edit ("A001*" on its panel, survives reboots); see PROTOCOL.md.
 
+- MPC plugin (2026-10-17, branch `mpc-probe`): the unit plugged into the MPC Key 37
+  (Gen1, RK3288, armv7, MPC runs as root) shows up as `/dev/hidraw0`, and a shell
+  round trip (`04 01` → `0b` info) works. `mpc/`: C core (`core/tp_hid.c` hidraw or
+  `unix:` socket, `core/tp_dev.c` exchange/poll/cache like device.py), tables
+  generated from protocol.py by `mpc/gen_tables.py` (flash-writing commands left
+  out), `probe/probe.c` (read-only check, `--listen`). `make -C mpc host` (ASan,
+  used by tests/test_mpc.py against tests/fakebridge.py), `make -C mpc arm` (static
+  musl via Zig from PyPI: no Docker here). The plugin builds on
+  github.com/sd88me/mpc-vst-plugins (VST2 wrapper, int16 effect path: so a silent
+  instrument used as a control surface, not a passthrough effect).
+
 ## Safety
 
 - Never send a command type that has not been observed in a capture (firmware
