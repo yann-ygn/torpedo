@@ -131,6 +131,7 @@ async def test_meters_follow_the_signal(app, dev):
         assert bar.meters == Meters(255, 79, CLIP_IN)
         assert text.count("█") == 15 + 10, "input full, output into the 4th LED (-10 dB)"
         assert "-10 dB" in text
+        assert app.screen.max_scroll_y == 0, "the meters would push the screen into scrolling"
 
 
 @pytest.mark.asyncio

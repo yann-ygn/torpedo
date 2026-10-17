@@ -204,7 +204,7 @@ class TorpedoApp(App):
     CSS = """
     #main { width: 1fr; }
     #topbar { height: 1; margin: 0 1; }
-    #meters { margin: 0 1; }
+    #meters { margin: 0 1 1 1; }
     #status { width: 1fr; }
     #mode { width: 34; }
     #modes { height: 1fr; }
@@ -235,7 +235,6 @@ class TorpedoApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield MeterBar(id="meters")
         with TabbedContent(initial="edit"):
             with TabPane("Edit", id="edit"):
                 with Horizontal():
@@ -254,6 +253,7 @@ class TorpedoApp(App):
                                 yield Editor(SIMULATION_LAYOUT, readonly=True)
                             with VerticalScroll(id="mode-2"):
                                 yield Editor(IR_LAYOUT)
+                        yield MeterBar(id="meters")
             yield IrPane("IRs", id="irs")
             yield PresetFilesPane("Preset files", id="files")
             yield SetupPane("Setup", id="setup")

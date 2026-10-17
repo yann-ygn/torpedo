@@ -61,7 +61,7 @@ reference implementation.
   nothing.
 - Meters (2026-10-16-meters, -meters2 captures): `05 in out clip 00` in every
   empty-queue reply, linear 0..255, clip bit 0 in / bit 1 out
-  (`Torpedo.meters`, `FakeHid.panel_signal`, TUI meter bar under the header,
+  (`Torpedo.meters`, `FakeHid.panel_signal`, TUI meter bar under the editor,
   polled every 0.1 s). LED thresholds -30..-6 dBFS are inferred.
 - After a USB replug or power cycle the unit sends nothing, so re-read
   everything (capture `2026-10-16-unplug.log`). `discard` doesn't clear the
