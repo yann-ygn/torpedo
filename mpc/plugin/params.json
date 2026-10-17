@@ -1,0 +1,540 @@
+{
+ "name": "Torpedo",
+ "params": [
+  {
+   "key": "view",
+   "name": "View",
+   "options": [
+    "OFFLINE",
+    "SIMULATION",
+    "ARCADE",
+    "IR"
+   ]
+  },
+  {
+   "key": "preset",
+   "name": "Preset",
+   "min": 1,
+   "max": 128,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuamp",
+   "name": "Amp on",
+   "options": [
+    "OFF",
+    "ON"
+   ]
+  },
+  {
+   "key": "simuamp_modele",
+   "name": "Amp model",
+   "options": [
+    "SE 6L6",
+    "SE EL34",
+    "SE EL84",
+    "SE KT88",
+    "PP 6L6",
+    "PP EL34",
+    "PP EL84",
+    "PP KT88"
+   ]
+  },
+  {
+   "key": "simuamp_gain",
+   "name": "Amp volume",
+   "min": 0,
+   "max": 30,
+   "display": "int"
+  },
+  {
+   "key": "simuamp_contour",
+   "name": "Amp presence",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuamp_depth",
+   "name": "Amp depth",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuamp_character",
+   "name": "Amp character",
+   "options": [
+    "TRIODE",
+    "PENTODE"
+   ]
+  },
+  {
+   "key": "simuhp",
+   "name": "Cabinet on",
+   "options": [
+    "OFF",
+    "ON"
+   ]
+  },
+  {
+   "key": "simuhp_speaker",
+   "name": "Cabinet",
+   "min": 0,
+   "max": 63,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_wave0",
+   "name": "IR A",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_wave1",
+   "name": "IR B",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_mic",
+   "name": "Mic A",
+   "min": 0,
+   "max": 7,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_distance",
+   "name": "Mic A distance",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_center",
+   "name": "Mic A axis",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_position",
+   "name": "Mic A side",
+   "options": [
+    "BACK",
+    "FRONT"
+   ]
+  },
+  {
+   "key": "eq",
+   "name": "EQ on",
+   "options": [
+    "OFF",
+    "ON"
+   ]
+  },
+  {
+   "key": "eq_mode",
+   "name": "EQ mode",
+   "options": [
+    "GUITAR",
+    "BASS",
+    "CUSTOM"
+   ]
+  },
+  {
+   "key": "eq_l_gain0",
+   "name": "Band 1 gain",
+   "min": 0,
+   "max": 40,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_gain1",
+   "name": "Band 2 gain",
+   "min": 0,
+   "max": 40,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_gain2",
+   "name": "Band 3 gain",
+   "min": 0,
+   "max": 40,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_gain3",
+   "name": "Band 4 gain",
+   "min": 0,
+   "max": 40,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_gain4",
+   "name": "Band 5 gain",
+   "min": 0,
+   "max": 40,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "preset_level",
+   "name": "Preset level",
+   "min": 0,
+   "max": 107,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "reverb",
+   "name": "Reverb on",
+   "options": [
+    "OFF",
+    "ON"
+   ]
+  },
+  {
+   "key": "reverb_room",
+   "name": "Reverb room",
+   "options": [
+    "STUDIO A",
+    "STUDIO B",
+    "BASEMENT",
+    "LOFT",
+    "HALL A",
+    "HALL B",
+    "CRYPT",
+    "CATHEDRAL"
+   ]
+  },
+  {
+   "key": "reverb_l_drywet",
+   "name": "Reverb dry/wet",
+   "min": 0,
+   "max": 127,
+   "display": "int"
+  },
+  {
+   "key": "arcade_guitarbass",
+   "name": "Instrument",
+   "options": [
+    "GUITAR",
+    "BASS"
+   ]
+  },
+  {
+   "key": "arcade_poweramp",
+   "name": "Arcade power amp",
+   "min": 0,
+   "max": 30,
+   "display": "int"
+  },
+  {
+   "key": "arcade_distance",
+   "name": "Arcade distance",
+   "min": 0,
+   "max": 44,
+   "display": "int"
+  },
+  {
+   "key": "arcade_tone",
+   "name": "Arcade tone",
+   "min": 0,
+   "max": 44,
+   "display": "int"
+  },
+  {
+   "key": "arcade_contour",
+   "name": "Arcade contour",
+   "min": 0,
+   "max": 40,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "arcade_level",
+   "name": "Arcade level",
+   "min": 0,
+   "max": 107,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "preset_mode",
+   "name": "Mode",
+   "options": [
+    "SIMULATION",
+    "ARCADE",
+    "IR"
+   ]
+  },
+  {
+   "key": "simuhp_level",
+   "name": "Mic A level",
+   "min": 0,
+   "max": 107,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_phase",
+   "name": "Mic A phase",
+   "options": [
+    "NORMAL",
+    "INVERTED"
+   ]
+  },
+  {
+   "key": "simuhp_mute",
+   "name": "Mic A mute",
+   "options": [
+    "OFF",
+    "ON"
+   ]
+  },
+  {
+   "key": "simuhp_mic_2",
+   "name": "Mic B",
+   "min": 0,
+   "max": 7,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_distance_2",
+   "name": "Mic B distance",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_center_2",
+   "name": "Mic B axis",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_position_2",
+   "name": "Mic B side",
+   "options": [
+    "BACK",
+    "FRONT"
+   ]
+  },
+  {
+   "key": "simuhp_level_2",
+   "name": "Mic B level",
+   "min": 0,
+   "max": 107,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "simuhp_phase_2",
+   "name": "Mic B phase",
+   "options": [
+    "NORMAL",
+    "INVERTED"
+   ]
+  },
+  {
+   "key": "simuhp_mute_2",
+   "name": "Mic B mute",
+   "options": [
+    "OFF",
+    "ON"
+   ]
+  },
+  {
+   "key": "eq_l_freq_low",
+   "name": "EQ low cut",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_freq_f0",
+   "name": "Band 1 freq",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_freq_f1",
+   "name": "Band 2 freq",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_freq_f2",
+   "name": "Band 3 freq",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_freq_f3",
+   "name": "Band 4 freq",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "eq_l_freq_f4",
+   "name": "Band 5 freq",
+   "min": 0,
+   "max": 127,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "out_level",
+   "name": "Output level",
+   "min": 0,
+   "max": 107,
+   "display": "int",
+   "dynamic_display": true
+  },
+  {
+   "key": "out_mute",
+   "name": "Output mute",
+   "options": [
+    "OFF",
+    "ON"
+   ]
+  },
+  {
+   "key": "preset_prev",
+   "name": "Preset prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "preset",
+   "step_delta": -1
+  },
+  {
+   "key": "preset_next",
+   "name": "Preset next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "preset",
+   "step_delta": 1
+  },
+  {
+   "key": "simuhp_speaker_prev",
+   "name": "Cabinet prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_speaker",
+   "step_delta": -1
+  },
+  {
+   "key": "simuhp_speaker_next",
+   "name": "Cabinet next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_speaker",
+   "step_delta": 1
+  },
+  {
+   "key": "simuhp_mic_prev",
+   "name": "Mic A prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_mic",
+   "step_delta": -1
+  },
+  {
+   "key": "simuhp_mic_next",
+   "name": "Mic A next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_mic",
+   "step_delta": 1
+  },
+  {
+   "key": "simuhp_mic_2_prev",
+   "name": "Mic B prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_mic_2",
+   "step_delta": -1
+  },
+  {
+   "key": "simuhp_mic_2_next",
+   "name": "Mic B next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_mic_2",
+   "step_delta": 1
+  },
+  {
+   "key": "simuhp_wave0_prev",
+   "name": "IR A prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_wave0",
+   "step_delta": -1
+  },
+  {
+   "key": "simuhp_wave0_next",
+   "name": "IR A next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_wave0",
+   "step_delta": 1
+  },
+  {
+   "key": "simuhp_wave1_prev",
+   "name": "IR B prev",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_wave1",
+   "step_delta": -1
+  },
+  {
+   "key": "simuhp_wave1_next",
+   "name": "IR B next",
+   "min": 0,
+   "max": 1,
+   "momentary": true,
+   "step_of": "simuhp_wave1",
+   "step_delta": 1
+  }
+ ]
+}

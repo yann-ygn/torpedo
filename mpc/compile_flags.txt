@@ -1,0 +1,5 @@
+-std=gnu11
+-Icore
+-Iplugin
+-Iplugin/build
+-Impc-vst-plugins/wrapper

@@ -23,6 +23,7 @@ class FakeBridge:
         self._sock.bind(self.path)
         self._sock.listen()
         self._conn: socket.socket | None = None
+        self.connections = 0  # clients accepted so far
         threading.Thread(target=self._serve, daemon=True).start()
 
     def unplug(self, replace: FakeHid | None = None):
@@ -40,6 +41,7 @@ class FakeBridge:
             except OSError:
                 return  # closed
             self._conn = conn
+            self.connections += 1
             with conn:
                 while True:
                     try:

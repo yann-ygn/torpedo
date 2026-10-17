@@ -74,14 +74,28 @@ reference implementation.
   generated from protocol.py by `mpc/gen_tables.py` (flash-writing commands left
   out), `probe/probe.c` (read-only check, `--listen`). `make -C mpc host` (ASan,
   used by tests/test_mpc.py against tests/fakebridge.py), `make -C mpc arm` (static
-  musl via Zig from PyPI: no Docker here). `core/tp_core.c` (branch `mpc-core`): worker
+  musl via Zig from PyPI: no Docker here). The plugin builds on github.com/sd88me/mpc-vst-plugins
+  (VST2 wrapper, int16 effect path: so a silent instrument used as a control surface, not
+  a passthrough effect). `core/tp_core.c` (branch `mpc-core`): worker
   thread owning the device; ordered queue with one entry per parameter (a rewrite
   replaces it and moves to the end); visible state = device + queued values, so
   late echoes don't move knobs; reports only device-made changes; reconnects and
   re-reads everything on unplug. `ctl/ctl.c` drives it from stdin
-  (tests/test_mpc_core.py, also usable on the MPC); `make -C mpc tsan` for threads. The plugin builds on
-  github.com/sd88me/mpc-vst-plugins (VST2 wrapper, int16 effect path: so a silent
-  instrument used as a control surface, not a passthrough effect).
+  (tests/test_mpc_core.py, also usable on the MPC); `make -C mpc tsan` for threads.
+- MPC plugin proper (branch `mpc-plugin`): `mpc/plugin/` on mpc-vst-plugins' VST2 wrapper
+  (submodule `mpc/mpc-vst-plugins`, pinned; `git submodule update --init`). Scope: the
+  unit's parameters and presets only (no IR upload, files, preset import/export) and no
+  project recall (empty state chunk). `gen_plugin.py` derives params.json, value texts
+  (plugin_tables.c) and layout.conf from layout.py; param 0 is a virtual read-only `view`
+  (offline/simulation/arcade/ir) every skin line hangs on (`when=view:...`): one page per
+  mode plus a "not connected" page. `engine.c`: silent instrument, one tp_core shared by
+  all instances, `display_rev` = core revision, presets in MPC's PRESET menu. Choosers
+  are readout + `-`/`+` buttons (a `stepper` under `when=` loses its arrows).
+  `make -C mpc plugin` builds the device folder (Zig, glibc 2.17 symbols; skin via
+  `uv run --with pillow`), `make -C mpc plugin-host` the ASan stand-in host
+  (tests/test_mpc_plugin.py). Previews: `studio.py preview` (see Makefile). The folder
+  carries `plugin-meta.xml`, which upstream's `mpc-store.sh -t <Synths> sync` needs to
+  register it. Works on the Key 37 (2026-10-17); the UI still needs tweaking.
 
 ## Safety
 
