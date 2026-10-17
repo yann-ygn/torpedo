@@ -54,6 +54,8 @@ tp_core_t *tp_core_start(const tp_core_config_t *cfg);   /* NULL with errno if t
 void tp_core_stop(tp_core_t *c);
 void tp_core_state(tp_core_t *c, tp_state_t *s);
 void tp_core_take_changes(tp_core_t *c, tp_changes_t *ch);   /* and clear them */
+/* +1 whenever changes are noted, for several readers (plugin instances) that each keep the last one seen */
+unsigned tp_core_revision(tp_core_t *c);
 
 /* Queue a change: 0, or -1 with errno ENOTCONN, EINVAL (out of range or not writable), or EPERM
  * (not editable in arcade mode: the unit would drop it silently). */

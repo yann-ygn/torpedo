@@ -48,6 +48,7 @@ struct tp_core {
     op_t ops[MAX_OPS];
     int nops, busy;
     tp_changes_t changes;
+    unsigned revision;   /* +1 whenever changes are noted */
     bank_t cabs, irs;
     name_t names[TP_PRESETS + 1];   /* [TP_EDIT_BUFFER]: the edit buffer */
     /* worker only */
@@ -124,12 +125,18 @@ static void publish(tp_core_t *c, const op_t *done)
     c->clip = c->dev.clip;
     if (done)
         settle(c, done);
+    int moved = 0;
     for (int i = 0; i < TP_NPARAMS; i++)
-        if (vis_param(c, i) != old_p[i])
+        if (vis_param(c, i) != old_p[i]) {
             c->changes.params |= 1ULL << i;
+            moved = 1;
+        }
     for (int i = 0; i < TP_NSETUP; i++)
-        if (vis_setup(c, i) != old_s[i])
+        if (vis_setup(c, i) != old_s[i]) {
             c->changes.setup |= 1U << i;
+            moved = 1;
+        }
+    c->revision += moved;
 }
 
 static void forget_queue(tp_core_t *c)
@@ -156,6 +163,7 @@ static int on_msg(const uint8_t *p, void *ctx)
         copy_str(c->names[p[1]].name, p + 3, TP_REPORT_LEN - 3, TP_NAME_LEN);
         c->names[p[1]].arcade = p[2];
         c->changes.flags |= TP_CHANGED_NAMES;
+        c->revision++;
         pthread_mutex_unlock(&c->lock);
     }
     return 0;
@@ -308,6 +316,7 @@ static int read_bank(tp_core_t *c, uint8_t number, bank_t *dest, unsigned flag)
     pthread_mutex_lock(&c->lock);
     memcpy(dest, &c->stage, sizeof *dest);
     c->changes.flags |= flag;
+    c->revision++;
     pthread_mutex_unlock(&c->lock);
     return 0;
 }
@@ -340,6 +349,7 @@ static int connect_dev(tp_core_t *c)
     c->changes.params = (1ULL << TP_NPARAMS) - 1;   /* everything is new */
     c->changes.setup = (1U << TP_NSETUP) - 1;
     c->changes.flags |= TP_CHANGED_CONNECTION;
+    c->revision++;
     pthread_mutex_unlock(&c->lock);
     return 0;
 }
@@ -384,6 +394,7 @@ static void *worker(void *arg)
             tp_close(&c->dev);
             c->connected = 0;
             c->changes.flags |= TP_CHANGED_CONNECTION;
+            c->revision++;
             forget_queue(c);
         }
         if (!c->nops)
@@ -457,6 +468,14 @@ void tp_core_state(tp_core_t *c, tp_state_t *s)
     s->meter_out = c->meter_out;
     s->clip = c->clip;
     pthread_mutex_unlock(&c->lock);
+}
+
+unsigned tp_core_revision(tp_core_t *c)
+{
+    pthread_mutex_lock(&c->lock);
+    unsigned r = c->revision;
+    pthread_mutex_unlock(&c->lock);
+    return r;
 }
 
 void tp_core_take_changes(tp_core_t *c, tp_changes_t *ch)
