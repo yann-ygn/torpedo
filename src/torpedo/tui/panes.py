@@ -256,28 +256,23 @@ class PresetFilesPane(TabPane):
          "load": self.load}[event.button.id]()
 
     def export(self):
-        if not self.app.names:
-            return
-        name = self.app.names[-1].name  # the edit buffer's
-        path = self.base / f"{name}.json"
+        """Read the current sound, then save it as `<its name>.json` (the name
+        comes from the unit: the app's name list isn't re-read on preset changes)."""
+        def save(preset: dict):
+            path = self.base / f"{preset['name']}.json"
 
-        def write(yes: bool | None = True):
-            if not yes:
-                return
-
-            def job(t):
-                preset = presetfile.export(t)
+            def write(yes: bool | None = True):
+                if not yes:
+                    return
                 path.parent.mkdir(parents=True, exist_ok=True)
                 presetfile.save_file(preset, path)
-
-            def done(_):
-                self.app.notify(f"Exported \"{name}\" to {path}", title="Export")
+                self.app.notify(f"Exported \"{preset['name']}\" to {path}", title="Export")
                 self.rescan()
-            self.app.run_job(job, done)
-        if path.exists():
-            self.app.push_screen(ConfirmScreen(f"Replace {path}?", "Replace"), write)
-        else:
-            write()
+            if path.exists():
+                self.app.push_screen(ConfirmScreen(f"Replace {path}?", "Replace"), write)
+            else:
+                write()
+        self.app.run_job(presetfile.export, save)
 
     def load(self):
         options = self.query_one("#preset-files", OptionList)

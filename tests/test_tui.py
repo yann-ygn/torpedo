@@ -198,9 +198,14 @@ async def test_preset_file_export_then_load(app, dev, tmp_path):
         pane.export()
         await settle(app, pilot)
         assert (tmp_path / "BDELUXE 1 RBN.json").exists()
-        pane.rescan()
         app.choose_preset(1)
         await settle(app, pilot)
+        pane.export()
+        await settle(app, pilot)
+        assert (tmp_path / "BDELUXE 1 DYN421.json").exists(), "named after the current sound"
+        pane.rescan()
+        files = pane.query_one("#preset-files")
+        files.highlighted = files.get_option_index(str(tmp_path / "BDELUXE 1 RBN.json"))
         pane.load()
         await settle(app, pilot)
         assert dev.params == dev.presets[0] and dev.buffer_name == "BDELUXE 1 RBN"
