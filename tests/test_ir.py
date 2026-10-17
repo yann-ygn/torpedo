@@ -5,6 +5,7 @@ import pytest
 from torpedo import ir
 from torpedo.device import Torpedo
 from torpedo.fake import FakeHid
+from torpedo.protocol import find_param
 
 
 @pytest.fixture(params=[0, 2], ids=["prompt", "lagging"])
@@ -31,6 +32,21 @@ def test_upload_and_delete(torpedo, tmp_path):
     assert len(torpedo.dev.irs) == 87, "nothing deleted"
     torpedo.delete_ir(86, "IRTEST-48K")
     assert len(torpedo.dev.irs) == 86
+
+
+def test_uploaded_ir_can_be_selected(torpedo):
+    """The IR slots' range is the bank's size, which grows with uploads."""
+    wave0 = find_param("simuhp_wave0")
+    torpedo.set_param(find_param("preset_mode"), 2)
+    with pytest.raises(ValueError, match="bank 1 holds 86"):
+        torpedo.set_param(wave0, 86)
+    rate, values = ir.read_wav("captures/irtest/IRTEST-48K.wav")
+    index = torpedo.upload_ir("IRTEST-48K", ir.prepare(values, rate, 20, "min-latency"))
+    assert torpedo.select_ir(0, index, torpedo.read_irs()) == {wave0.index: 86}
+    torpedo.select_ir(0, 0)
+    torpedo.delete_ir(86, "IRTEST-48K")
+    with pytest.raises(ValueError, match="bank 1 holds 86"):
+        torpedo.set_param(wave0, 86)
 
 
 def test_prepare():

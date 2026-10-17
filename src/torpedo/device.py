@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from . import ir
-from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, EMPTY_PRESET,
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, BANK_PARAMS, EDIT_BUFFER, EMPTY_PRESET,
                        FOLDER_BANK_OFFSET, HEARTBEAT, IR_ACK, IR_BANK, MSG_CAB, MSG_EMPTY,
                        MSG_INFO, MSG_IR_DATA, MSG_IR_END, MSG_IR_HEADER, MSG_NAME, MSG_PARAM,
                        MSG_POLL, MSG_QUERY, MSG_SETUP, NAMES_ALL, NAMES_EDIT_BUFFER, PARAMS,
@@ -70,6 +70,7 @@ class Torpedo:
         self.params: dict[int, int] = {}
         self.setup: dict[int, int] = {}
         self.meters = Meters()
+        self.bank_sizes: dict[int, int] = {}  # from the last read_cabs of each bank
         self.timeout = TIMEOUT
         self._exchange(MSG_POLL)  # flush whatever is queued
 
@@ -166,14 +167,27 @@ class Torpedo:
         for m in msgs:
             if m[0] == MSG_CAB and m[1] == bank:
                 records.setdefault(m[2], {})[m[3]] = m
+        self.bank_sizes[bank] = len(records)
         return [parse_cab(i, records[i]) for i in sorted(records)]
 
     # --- writes --------------------------------------------------------------
 
+    def check(self, param: Param, value: int):
+        """param.check, and for a cab or IR index, this unit's bank size (uploads grow the IR bank)."""
+        param.check(value)
+        bank = BANK_PARAMS.get(param.index)
+        if bank is None:
+            return
+        if bank not in self.bank_sizes:
+            self.read_cabs(bank)
+        size = self.bank_sizes[bank]
+        if value >= size:
+            raise ValueError(f"{param.name} must be 0..{size - 1} (bank {bank} holds {size}), got {value}")
+
     def set_param(self, param: Param, value: int) -> dict[int, int]:
         """Edit the current preset (not saved). Returns every parameter the device
         reported as changed, including linked ones it recomputed."""
-        param.check(value)
+        self.check(param, value)
         if param.index not in self.params:
             self.read_params()
         if self.params[param.index] == value:
@@ -277,7 +291,7 @@ class Torpedo:
         which accepts every parameter and recomputes nothing."""
         for p in PARAMS:
             if p.writable:
-                p.check(values[p.index])
+                self.check(p, values[p.index])
         mode = PARAMS[PRESET_MODE]
         self.set_param(mode, SIMULATION)
         for p in PARAMS:

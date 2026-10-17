@@ -260,6 +260,7 @@ def test_select_preset(torpedo):
 ])
 def test_validation_sends_nothing(torpedo, name, value):
     torpedo.read_params()
+    torpedo.read_cabs()  # the cab bank's size bounds SIMUHP_SPEAKER (read on demand otherwise)
     before = len(commands(torpedo))
     with pytest.raises(ValueError):
         torpedo.set_param(find_param(name), value)

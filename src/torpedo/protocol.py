@@ -92,6 +92,7 @@ class Param:
 
 RO = (0, 127, False)
 KNOB = (0, 127)
+BANK_INDEX = (0, 255)  # an index into a bank: the unit's bank size is the real limit (BANK_PARAMS)
 
 # Order = LiveCABParameterIndexDictionary in the exe. Ranges come from a
 # min/max sweep of every control in Torpedo Remote
@@ -107,9 +108,9 @@ PARAMS = [Param(i, *row) for i, row in enumerate([
     ("SIMUAMP_CHARACTER", 0, 1),
     ("SIMUHP", 0, 1),
     ("SIMUHP_PREVIEW", *RO),  # 2 = play a cab uploaded with 6e/6f/70 (Remote library preview)
-    ("SIMUHP_SPEAKER", 0, 31),  # index into cab bank 0 (32 cabs on this unit)
-    ("SIMUHP_WAVE0", 0, 85),  # IR mode, slot 1: index in the folder's bank (ML bank: 86 IRs)
-    ("SIMUHP_WAVE1", 0, 85),  # IR mode, slot 2
+    ("SIMUHP_SPEAKER", *BANK_INDEX),  # index into cab bank 0 (32 cabs on this unit)
+    ("SIMUHP_WAVE0", *BANK_INDEX),  # IR mode, slot 1: index in the folder's bank (ML bank: 86 IRs + uploads)
+    ("SIMUHP_WAVE1", *BANK_INDEX),  # IR mode, slot 2
     ("SIMUHP_FOLDER_IR_0", 0, 0),  # 0 = bank 1 (ML); user banks 2-4 are empty on this unit
     ("SIMUHP_FOLDER_IR_1", 0, 0),
     ("SIMUHP_MIC", 0, 7),  # index into the cab's mic list
@@ -165,6 +166,10 @@ MODE_NAMES = {SIMULATION: "simulation", ARCADE: "arcade", IR: "ir"}
 # bank). Folder 0 = bank 1 (ML IRs); folder f = bank f + 1 is a guess. Remote's
 # Live UI shows no other IR folder: banks 2-4 may be for other Two notes products.
 FOLDER_BANK_OFFSET = 1
+# Parameters that index a bank, and which one (the IR slots: folder 0, pinned).
+BANK_PARAMS = {PARAM_BY_NAME["SIMUHP_SPEAKER"].index: 0,
+               PARAM_BY_NAME["SIMUHP_WAVE0"].index: FOLDER_BANK_OFFSET,
+               PARAM_BY_NAME["SIMUHP_WAVE1"].index: FOLDER_BANK_OFFSET}
 
 # Arcade mode is a front end over the same parameters: its 6 ARCADE_* macros
 # recompute simulation parameters (tools/modeprobe.py, 2026-10-15):

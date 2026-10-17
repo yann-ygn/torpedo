@@ -4,7 +4,7 @@ import sys
 
 from . import backup, ir, presetfile
 from .device import FOLDERS, MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
-from .protocol import (ARCADE, ARCADE_EDITABLE, EMPTY_PRESET, FOLDER_BANK_OFFSET, IR, MODE_NAMES,
+from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_PARAMS, EMPTY_PRESET, FOLDER_BANK_OFFSET, IR, MODE_NAMES,
                        PARAM_BY_NAME, PARAMS, PRESET_MODE, PRESETS, SETUP, SETUP_OPTIONS, Cab,
                        find_param, preset_name)
 
@@ -60,6 +60,8 @@ def cmd_params(t: Torpedo, args):
     print(f"mode: {MODE_NAMES.get(values[PRESET_MODE], '?')} (PRESET_MODE={values[PRESET_MODE]})")
     for p in PARAMS:
         rng = f"{p.lo}..{p.hi}" if p.writable else "read-only"
+        if p.index in BANK_PARAMS:
+            rng = f"index in bank {BANK_PARAMS[p.index]}"
         if p.writable and arcade and p.index not in ARCADE_EDITABLE:
             rng += "  simulation mode only"
         print(f"{p.index:02x} {p.name:<20} {values.get(p.index, '?'):>3}  {rng}")
@@ -72,6 +74,8 @@ def cmd_get(t: Torpedo, args):
 
 
 def cmd_set(t: Torpedo, args):
+    for param, value in args.assignments:
+        t.check(param, value)  # the bank sizes too, before anything is sent
     before = t.read_params()
     for param, value in args.assignments:
         print_changes(before, t.set_param(param, value))
