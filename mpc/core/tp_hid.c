@@ -76,7 +76,9 @@ int tp_hid_write(int fd, const uint8_t *payload, int n)
         return -1;
     }
     memcpy(buf + 1, payload, n);
-    ssize_t k = write(fd, buf, sizeof buf);
+    ssize_t k = send(fd, buf, sizeof buf, MSG_NOSIGNAL);   /* a closed socket: EPIPE, not SIGPIPE */
+    if (k < 0 && errno == ENOTSOCK)
+        k = write(fd, buf, sizeof buf);
     if (k == (ssize_t)sizeof buf)
         return 0;
     if (k >= 0)

@@ -74,7 +74,12 @@ reference implementation.
   generated from protocol.py by `mpc/gen_tables.py` (flash-writing commands left
   out), `probe/probe.c` (read-only check, `--listen`). `make -C mpc host` (ASan,
   used by tests/test_mpc.py against tests/fakebridge.py), `make -C mpc arm` (static
-  musl via Zig from PyPI: no Docker here). The plugin builds on
+  musl via Zig from PyPI: no Docker here). `core/tp_core.c` (branch `mpc-core`): worker
+  thread owning the device; ordered queue with one entry per parameter (a rewrite
+  replaces it and moves to the end); visible state = device + queued values, so
+  late echoes don't move knobs; reports only device-made changes; reconnects and
+  re-reads everything on unplug. `ctl/ctl.c` drives it from stdin
+  (tests/test_mpc_core.py, also usable on the MPC); `make -C mpc tsan` for threads. The plugin builds on
   github.com/sd88me/mpc-vst-plugins (VST2 wrapper, int16 effect path: so a silent
   instrument used as a control surface, not a passthrough effect).
 

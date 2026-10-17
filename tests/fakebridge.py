@@ -22,7 +22,16 @@ class FakeBridge:
         self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         self._sock.bind(self.path)
         self._sock.listen()
+        self._conn: socket.socket | None = None
         threading.Thread(target=self._serve, daemon=True).start()
+
+    def unplug(self, replace: FakeHid | None = None):
+        """Drop the client, as if the USB cable was pulled; the next client gets `replace`."""
+        with self.lock:
+            if replace is not None:
+                self.fake = replace
+            if self._conn is not None:
+                self._conn.shutdown(socket.SHUT_RDWR)
 
     def _serve(self):
         while True:
@@ -30,8 +39,15 @@ class FakeBridge:
                 conn, _ = self._sock.accept()
             except OSError:
                 return  # closed
+            self._conn = conn
             with conn:
-                while data := conn.recv(256):
+                while True:
+                    try:
+                        data = conn.recv(256)
+                    except OSError:
+                        break
+                    if not data:
+                        break
                     try:
                         with self.lock:
                             self.fake.write(list(data))
@@ -39,8 +55,11 @@ class FakeBridge:
                     except Exception as e:
                         self.errors.append(e)
                         break
-                    if reply:
-                        conn.send(bytes(reply))
+                    try:
+                        if reply:
+                            conn.send(bytes(reply))
+                    except OSError:  # unplugged meanwhile
+                        break
 
     def close(self):
         try:

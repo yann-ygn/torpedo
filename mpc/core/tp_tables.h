@@ -36,6 +36,7 @@
 #define TP_SIMULATION 0
 #define TP_ARCADE 1
 #define TP_IR 2
+#define TP_IR_BANK 1
 
 #define TP_NPARAMS 51
 enum {
@@ -123,3 +124,5 @@ typedef struct {
 
 extern const tp_param_t tp_params[TP_NPARAMS];
 extern const char *const tp_setup_names[TP_NSETUP];
+/* Highest value of each global setting (SETUP_OPTIONS), -1: not written as a setting */
+extern const int8_t tp_setup_max[TP_NSETUP];

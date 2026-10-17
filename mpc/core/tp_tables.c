@@ -75,3 +75,24 @@ const char *const tp_setup_names[TP_NSETUP] = {
     "DUMMY_AUX_LEVEL",
     "DUMMY_AUX_MUTE",
 };
+
+const int8_t tp_setup_max[TP_NSETUP] = {
+    107,  /* SETUP_LEVEL */
+    1,  /* SETUP_MUTE */
+    -1,  /* SETUP_ON_OFF */
+    -1,  /* SETUP_PRESET */
+    -1,  /* SETUP_PRESET_SOURCE */
+    -1,  /* SETUP_FLAG_PRESET_MODIF */
+    -1,  /* SETUP_FOOTSWITCH_A */
+    -1,  /* SETUP_FOOTSWITCH_HOLD_A */
+    -1,  /* SETUP_FOOTSWITCH_B */
+    -1,  /* SETUP_FOOTSWITCH_HOLD_B */
+    1,  /* SETUP_SPDIF_FREQ */
+    1,  /* SETUP_MIDI_CC */
+    1,  /* SETUP_MIDI_PC */
+    16,  /* SETUP_MIDI_CHANNEL */
+    3,  /* SETUP_SPDIF_MODE */
+    -1,  /* DUMMY_CCIR_PRESENCE */
+    -1,  /* DUMMY_AUX_LEVEL */
+    -1,  /* DUMMY_AUX_MUTE */
+};
