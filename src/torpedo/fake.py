@@ -2,7 +2,7 @@
 
 Emulates the observed firmware at the report level: one IN report per OUT
 report from a queue (`05` when empty), no reply to no-op writes, linked
-parameters, the preset-modified flag. Commands that were never observed in a
+parameters, the preset-modified flag, the meters in `05`. Commands that were never observed in a
 capture raise, so tests also check that nothing unknown gets sent.
 """
 
@@ -15,7 +15,7 @@ from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, EMPTY_PAR
                        NAMES_ALL, NAMES_EDIT_BUFFER, PRESET_MODE, PRESETS, QUERY_BANK, QUERY_CLEAR,
                        QUERY_COMMIT, QUERY_INFO, QUERY_IR, QUERY_IR_DELETE, QUERY_NAMES, QUERY_PARAMS,
                        QUERY_SETUP, QUERY_STORE, REPORT_LEN, SETUP_OPTIONS, SETUP_PRESET,
-                       SETUP_PRESET_SOURCE, STATUS)
+                       SETUP_PRESET_SOURCE, STATUS, Meters)
 
 # Read from the real unit (preset A001 and setup, 2026-10-15)
 A001 = [0, 5, 0, 127, 127, 1, 1, 0, 16, 0, 0, 0, 0, 5, 0, 17, 1, 1, 0, 21, 20, 20, 20, 21, 87,
@@ -80,6 +80,7 @@ class FakeHid:
         self.irs = [(name, fake_ir(i)) for i, name in enumerate(ML_IRS)]  # bank 1
         self.upload: list[bytes] = []
         self.kept: tuple[int, list[int], str] | None = None  # the panel's "A001*": source, params, name
+        self.meters = Meters()  # sent in every `05`; see panel_signal
         self.queue: deque[list[int]] = deque()
         self.replies = 0  # IN reports owed: one per OUT report
         self.sent: list[bytes] = []  # every OUT report, without the report ID
@@ -101,8 +102,12 @@ class FakeHid:
         self.replies -= 1
         if self.held:
             self.held -= 1
-            return report(MSG_EMPTY)
-        return self.queue.popleft() if self.queue else report(MSG_EMPTY)
+            return self._empty()
+        return self.queue.popleft() if self.queue else self._empty()
+
+    def _empty(self) -> list[int]:
+        m = self.meters
+        return report(MSG_EMPTY, m.input, m.output, m.clip, 0)
 
     def _handle(self, b: bytes):
         cmd, idx, val = b[0], b[1], b[2]
@@ -190,9 +195,22 @@ class FakeHid:
         self._set_param(idx, val, panel=True)
 
     def panel_setup(self, idx: int, val: int):
-        """SETUP menu (seen: SETUP_MIDI_CC). The IN and OUT LEVEL controls send nothing."""
+        """SETUP menu (seen: SETUP_MIDI_CC). The IN LEVEL knob sends nothing."""
         self.setup[idx] = val
         self.queue.append(report(MSG_SETUP, idx, val))
+
+    def panel_level(self, val: int):
+        """OUT LEVEL encoder (2026-10-16-meters capture): SETUP_LEVEL, and level 0
+        mutes (SETUP_MUTE 1 after the level), leaving 0 unmutes."""
+        level, mute = SETUP_OPTIONS["level"].index, SETUP_OPTIONS["mute"].index
+        was = self.setup[level]
+        self.panel_setup(level, val)
+        if (val == 0) != (was == 0):
+            self.panel_setup(mute, int(val == 0))
+
+    def panel_signal(self, input: int, output: int, clip: int = 0):
+        """Something played into the unit: the meters of every following `05`."""
+        self.meters = Meters(input, output, clip)
 
     def _set_param(self, idx: int, val: int, panel: bool = False):
         if self.params[idx] == val or (self.params[PRESET_MODE] == ARCADE and idx not in ARCADE_EDITABLE):

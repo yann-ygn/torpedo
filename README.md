@@ -65,7 +65,9 @@ a filterable list (cab, mic, IR, amp, room), Space toggles. `s` saves, `r`
 renames, `d` discards, Del clears the highlighted preset, `/` filters the presets. In arcade mode, the
 simulation values arcade computes are listed under its controls, read-only.
 Changes made on the unit's front panel show up (highlighted for a second),
-and the TUI reconnects by itself after a replug.
+and the TUI reconnects by itself after a replug. The input and output meters
+under the title bar mirror the unit's LEDs (3 green, 2 orange, clip), with
+the level in dBFS.
 
 ## IRs
 

@@ -1,8 +1,8 @@
 """Transport for the Two notes Torpedo Live (HID 0483:A334, see PROTOCOL.md).
 
 The device answers each OUT report with exactly one IN report: the next
-message in its queue, or an `05` report when the queue is empty (on its own
-it only flushes the queue about once a second). So after a command we poll
+message in its queue, or an `05` report with the meters when the queue is
+empty (on its own it only flushes the queue about once a second). So after a command we poll
 with `7e` until the expected reply has arrived and the queue is empty.
 """
 
@@ -19,8 +19,8 @@ from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_END, EDIT_BUFFER, EMPTY_PRE
                        PARAM_BY_NAME, PRESETS, PRESET_MODE, QUERY_BANK, QUERY_CLEAR, QUERY_COMMIT,
                        QUERY_INFO, QUERY_IR, QUERY_IR_DELETE, QUERY_NAMES, QUERY_PARAMS,
                        QUERY_SETUP, QUERY_STORE, REPORT_LEN, SETUP, SETUP_OPTIONS, SETUP_PRESET,
-                       SETUP_PRESET_SOURCE, SIMULATION, STATUS, Cab, Param, PresetName, SetupOption,
-                       check_name, parse_cab, parse_name, preset_name)
+                       SETUP_PRESET_SOURCE, SIMULATION, STATUS, Cab, Meters, Param, PresetName,
+                       SetupOption, check_name, parse_cab, parse_meters, parse_name, preset_name)
 
 VID, PID = 0x0483, 0xA334  # ST's shared VID: also check the manufacturer
 MANUFACTURER = "Two Notes Audio Engineering"
@@ -63,12 +63,13 @@ def open_hid():
 
 class Torpedo:
     """Keeps a cache of the current preset's parameters and setup values,
-    updated from every message the device sends."""
+    updated from every message the device sends, and the latest meters."""
 
     def __init__(self, dev=None):
         self.dev = dev if dev is not None else open_hid()
         self.params: dict[int, int] = {}
         self.setup: dict[int, int] = {}
+        self.meters = Meters()
         self.timeout = TIMEOUT
         self._exchange(MSG_POLL)  # flush whatever is queued
 
@@ -100,6 +101,8 @@ class Torpedo:
         while True:
             p = bytes(self.dev.read(REPORT_LEN, READ_TIMEOUT_MS))
             if not p or p[0] == MSG_EMPTY:
+                if p:
+                    self.meters = parse_meters(p)
                 if done:
                     return msgs
             elif p[:2] != HEARTBEAT:
@@ -113,7 +116,8 @@ class Torpedo:
             self._send(MSG_POLL)
 
     def poll(self) -> list[bytes]:
-        """Fetch what the device sent on its own (front panel changes) into the cache.
+        """Fetch what the device sent on its own (front panel changes) into the
+        cache, and the meters.
 
         Coming back on the panel to a preset left with edits restores them with
         `0c 03 80` but no SETUP_PRESET_SOURCE, so the source is then read back.

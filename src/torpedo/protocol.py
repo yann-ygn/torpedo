@@ -4,6 +4,7 @@ Every message is one 64-byte report `[type] [index] [value] ...`. The device
 reuses its buffer, so bytes past the payload are stale: parse by type.
 """
 
+import math
 from dataclasses import dataclass
 
 REPORT_LEN = 64
@@ -11,7 +12,7 @@ REPORT_LEN = 64
 # Message types. Only send what has been observed in a capture of Torpedo Remote.
 MSG_PARAM = 0x01  # 01 idx val: set (host) / value or change (device)
 MSG_QUERY = 0x04  # 04 what [arg]: query (host); 04 02 = heartbeat (device)
-MSG_EMPTY = 0x05  # device: queue is empty (probably carries the meters)
+MSG_EMPTY = 0x05  # device: queue is empty, with the meters (see Meters)
 MSG_INFO = 0x0B  # device: reply to 04 01
 MSG_SETUP = 0x0C  # 0c idx val: select preset with idx 3 (host) / setup value (device)
 MSG_POLL = 0x7E  # host: send me the next queued message
@@ -281,3 +282,35 @@ class PresetName:
     @property
     def empty(self) -> bool:
         return self.name == EMPTY_PRESET
+
+
+# `05 in out clip 00`: every empty-queue reply carries the meters
+# (2026-10-16-meters captures). Levels look linear: the panel's input LEDs lit
+# at 7, 19, 39, 79 and 168, i.e. 6 dB apart.
+METER_FULL = 255
+CLIP_IN, CLIP_OUT = 0x01, 0x02  # each held ~1 s after the last clipping peak
+LED_DBFS = (-30, -24, -18, -12, -6)  # (?) the panel's 5 input LEDs; clip is the 6th
+
+
+@dataclass(frozen=True)
+class Meters:
+    input: int = 0  # 0..255
+    output: int = 0  # 0..255, after the output level
+    clip: int = 0  # CLIP_IN | CLIP_OUT; output clip doesn't follow `output` (seen at 148)
+
+    @property
+    def clip_in(self) -> bool:
+        return bool(self.clip & CLIP_IN)
+
+    @property
+    def clip_out(self) -> bool:
+        return bool(self.clip & CLIP_OUT)
+
+
+def parse_meters(p: bytes) -> Meters:
+    return Meters(p[1], p[2], p[3] & (CLIP_IN | CLIP_OUT))
+
+
+def meter_db(v: int) -> float:
+    """dBFS of a meter byte; -inf for silence."""
+    return 20 * math.log10(v / METER_FULL) if v else -math.inf

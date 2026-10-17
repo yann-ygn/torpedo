@@ -1,8 +1,11 @@
+import math
+
 import pytest
 
 from torpedo.device import IgnoredWrite, Torpedo
 from torpedo.fake import A001, FakeHid
-from torpedo.protocol import EDIT_BUFFER, EMPTY_PARAMS, MSG_POLL, PARAMS, SETUP, SETUP_OPTIONS, find_param
+from torpedo.protocol import (CLIP_IN, EDIT_BUFFER, EMPTY_PARAMS, MSG_POLL, PARAMS, SETUP,
+                              SETUP_OPTIONS, Meters, find_param, meter_db)
 
 CONTOUR = find_param("arcade_contour")
 PARAMS_ALL = frozenset(range(len(PARAMS)))
@@ -142,6 +145,30 @@ def test_front_panel_changes(torpedo):
     assert (torpedo.preset, torpedo.source, torpedo.params[0x1D]) == (EDIT_BUFFER, 0, 1)
     assert torpedo.setup[SETUP.index("SETUP_MIDI_CC")] == 0
     assert commands(torpedo)[-1] == bytes([0x04, 0x0B, 0]), "only the setup re-read was sent"
+
+
+def test_meters(torpedo):
+    assert torpedo.meters == Meters()
+    torpedo.dev.panel_signal(168, 40, CLIP_IN)
+    torpedo.poll()
+    assert (torpedo.meters.input, torpedo.meters.output) == (168, 40)
+    assert torpedo.meters.clip_in and not torpedo.meters.clip_out
+    torpedo.dev.panel_signal(0, 0)
+    torpedo.read_params()  # every exchange ends on an `05`
+    assert torpedo.meters == Meters()
+    assert round(meter_db(168)) == -4 and meter_db(0) == -math.inf
+
+
+def test_out_level_encoder_mutes_at_zero(torpedo):
+    level, mute = SETUP_OPTIONS["level"].index, SETUP_OPTIONS["mute"].index
+    torpedo.read_setup()
+    for v in (1, 0):
+        torpedo.dev.panel_level(v)
+    torpedo.poll()
+    assert (torpedo.setup[level], torpedo.setup[mute]) == (0, 1)
+    torpedo.dev.panel_level(1)
+    torpedo.poll()
+    assert (torpedo.setup[level], torpedo.setup[mute]) == (1, 0)
 
 
 def test_read_names(torpedo):

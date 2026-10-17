@@ -7,6 +7,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.timer import Timer
 from textual.widgets import (ContentSwitcher, Footer, Header, Input, Label, OptionList, Static,
                              TabbedContent, TabPane)
@@ -16,13 +17,14 @@ from ..device import Info, Torpedo
 from ..layout import (ARCADE_LAYOUT, CAB, IR_LAYOUT, IR_SLOT, LAYOUTS, MIC, MODE_CONTROL, MODES,
                       SIMULATION_LAYOUT, SLIDER, Control, level_db)
 from ..protocol import (EDIT_BUFFER, MSG_PARAM, PARAMS, PRESET_MODE, PRESETS, SETUP_PRESET,
-                        SETUP_OPTIONS, SETUP_PRESET_SOURCE, Cab, PresetName, check_name, preset_name)
+                        SETUP_OPTIONS, SETUP_PRESET_SOURCE, Cab, Meters, PresetName, check_name,
+                        preset_name)
 from .editor import Editor
 from .panes import BackupPane, IrPane, PresetFilesPane, SetupPane
-from .widgets import Choice, ConfirmScreen, FormScreen, PickerScreen, TextScreen, Value
+from .widgets import Choice, ConfirmScreen, FormScreen, MeterBar, PickerScreen, TextScreen, Value
 
 DEBOUNCE = 0.15  # seconds; sliders only write once they settle
-POLL = 0.3  # front-panel changes
+POLL = 0.1  # front-panel changes and meters
 RETRY = 2.0  # reconnect attempts while the Torpedo is unplugged
 
 
@@ -66,7 +68,7 @@ class DeviceThread:
     def _call(self, callback, *args):
         try:
             self.app.call_from_thread(callback, *args)
-        except RuntimeError:  # app already shut down
+        except (RuntimeError, NoMatches):  # app shut down, or its widgets already gone
             pass
 
 
@@ -75,6 +77,7 @@ class Snapshot:
     """The device's cache, copied in the device thread for the UI."""
     params: dict[int, int]
     setup: dict[int, int]
+    meters: Meters = Meters()
 
     @property
     def edited(self) -> bool:
@@ -86,7 +89,7 @@ class Snapshot:
 
 
 def snapshot(t: Torpedo) -> Snapshot:
-    return Snapshot(dict(t.params), dict(t.setup))
+    return Snapshot(dict(t.params), dict(t.setup), t.meters)
 
 
 @dataclass
@@ -201,6 +204,7 @@ class TorpedoApp(App):
     CSS = """
     #main { width: 1fr; }
     #topbar { height: 1; margin: 0 1; }
+    #meters { margin: 0 1; }
     #status { width: 1fr; }
     #mode { width: 34; }
     #modes { height: 1fr; }
@@ -231,6 +235,7 @@ class TorpedoApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield MeterBar(id="meters")
         with TabbedContent(initial="edit"):
             with TabPane("Edit", id="edit"):
                 with Horizontal():
@@ -295,6 +300,7 @@ class TorpedoApp(App):
         everything is read again once it is back."""
         self.connected = False
         self.query_one("#status", Static).update("[b red]disconnected[/], waiting for the Torpedo...")
+        self.query_one(MeterBar).meters = Meters()
 
         def close(t):
             self.device.target = None
@@ -321,6 +327,7 @@ class TorpedoApp(App):
 
     def polled(self, result: tuple[list[bytes], Snapshot]):
         msgs, state = result
+        self.query_one(MeterBar).meters = state.meters
         if msgs:
             self.show_state(state, frozenset(p[1] for p in msgs if p[0] == MSG_PARAM))
 

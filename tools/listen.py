@@ -7,9 +7,10 @@ next action in the log; Ctrl+C (or creating tools/STOP) stops.
 Usage: uv run python tools/listen.py captures/<name>.log
 
 Same format as hidspy.py, so summarize.py works on it. The .log skips the
-heartbeat and repeated `05` reports, but keeps every `05` whose first bytes
-change (the meters, probably); the .log.raw keeps everything. A disconnect,
-a reconnect and the unit going quiet are logged as `event` lines.
+heartbeat and repeated `05` reports, but keeps every `05` whose meters
+change; the .log.raw keeps everything. A disconnect, a reconnect and the
+unit going quiet are logged as `event` lines. The console only shows the
+meters every METER_PRINT seconds, so typed notes stay readable.
 """
 import os
 import sys
@@ -17,10 +18,12 @@ import threading
 import time
 
 from torpedo.device import open_hid
-from torpedo.protocol import HEARTBEAT, MSG_EMPTY, MSG_PARAM, MSG_POLL, MSG_SETUP, PARAMS, REPORT_LEN, SETUP
+from torpedo.protocol import (HEARTBEAT, MSG_EMPTY, MSG_PARAM, MSG_POLL, MSG_SETUP, PARAMS, REPORT_LEN,
+                              SETUP, meter_db, parse_meters)
 
 PERIOD = 0.02
-METER_BYTES = 5  # 05 + 4 bytes; the rest of the report is a stale buffer
+METER_BYTES = 5  # 05 in out clip 00; the rest of the report is a stale buffer
+METER_PRINT = 2.0  # seconds between meter lines on the console
 
 dev = open_hid()
 here = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +47,9 @@ def describe(p: bytes) -> str:
     if p[0] == MSG_SETUP and p[1] < len(SETUP):
         return f"{SETUP[p[1]]} = {p[2]}"
     if p[0] == MSG_EMPTY:
-        return "05 " + p[1:METER_BYTES].hex(" ")
+        m = parse_meters(p)
+        clip = " ".join(n for n, on in (("CLIP-IN", m.clip_in), ("CLIP-OUT", m.clip_out)) if on)
+        return f"meters in {meter_db(m.input):4.0f} dB  out {meter_db(m.output):4.0f} dB  {clip}"
     return p[:16].hex(" ")
 
 
@@ -81,7 +86,7 @@ def reopen():
 
 threading.Thread(target=notes, daemon=True).start()
 print(f"listening, logging to {log_path} (type a note + Enter, Ctrl+C to stop)")
-last_meter, silent = None, 0
+last_meter, silent, printed = None, 0, 0.0
 try:
     while dev and not os.path.exists(stop_path):
         start = time.time()
@@ -106,7 +111,9 @@ try:
             meter = p[:METER_BYTES] if p[0] == MSG_EMPTY else None
             if p[:2] != HEARTBEAT and (meter is None or meter != last_meter):
                 write(log, line)
-                print(f"{time.time() - t0:9.3f}  {describe(p)}")
+                if meter is None or time.time() - printed >= METER_PRINT:
+                    print(f"{time.time() - t0:9.3f}  {describe(p)}")
+                    printed = time.time() if meter is not None else printed
             if meter is not None:
                 last_meter = meter
         time.sleep(max(0.0, PERIOD - (time.time() - start)))

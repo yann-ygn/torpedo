@@ -3,12 +3,12 @@ import pytest
 from torpedo.device import SPEAKER, Torpedo
 from torpedo.fake import A001, FakeHid
 from torpedo.layout import CHOICE, LAYOUTS, controls
-from torpedo.protocol import (ARCADE, ARCADE_EDITABLE, MSG_PARAM, MSG_POLL, MSG_QUERY, PARAMS,
-                              PRESET_MODE, SIMULATION, find_param)
+from torpedo.protocol import (ARCADE, ARCADE_EDITABLE, CLIP_IN, MSG_PARAM, MSG_POLL, MSG_QUERY, PARAMS,
+                              PRESET_MODE, SIMULATION, Meters, find_param)
 from torpedo.tui.app import TorpedoApp
 from torpedo.tui.editor import Editor
 from torpedo.tui.panes import PresetFilesPane
-from torpedo.tui.widgets import ConfirmScreen, PickerScreen, Value
+from torpedo.tui.widgets import ConfirmScreen, MeterBar, PickerScreen, Value
 
 CONTOUR = find_param("arcade_contour").index
 EQ_GAIN0 = find_param("eq_l_gain0").index
@@ -115,6 +115,22 @@ async def test_front_panel_change_shows_up(app, dev):
         w = widget(app, ARCADE, "arcade_contour")
         assert w.value == 10 and w.has_class("-changed")
         assert writes(dev) == []
+
+
+@pytest.mark.asyncio
+async def test_meters_follow_the_signal(app, dev):
+    async with app.run_test(size=SIZE) as pilot:
+        await settle(app, pilot)
+        dev.panel_signal(255, 79, CLIP_IN)
+        bar = app.query_one(MeterBar)
+        for _ in range(50):
+            await pilot.pause(0.05)
+            if bar.meters.input == 255:
+                break
+        text = str(bar.render())
+        assert bar.meters == Meters(255, 79, CLIP_IN)
+        assert text.count("█") == 15 + 10, "input full, output into the 4th LED (-10 dB)"
+        assert "-10 dB" in text
 
 
 @pytest.mark.asyncio

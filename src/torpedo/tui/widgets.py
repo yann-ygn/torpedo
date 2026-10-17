@@ -1,4 +1,4 @@
-"""Keyboard-first value widgets (slider, choice) and the overlay screens.
+"""Keyboard-first value widgets (slider, choice), the meters and the overlay screens.
 
 Setting `value` from code never posts anything: only user actions post
 `Value.Changed`, so showing the device's state can't write it back.
@@ -15,6 +15,8 @@ from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Button, Input, Label, OptionList
 from textual.widgets.option_list import Option
+
+from ..protocol import LED_DBFS, Meters, meter_db
 
 
 class Value(Widget, can_focus=True):
@@ -251,6 +253,46 @@ class Choice(Value):
             if event.x < x:
                 self.user_set(i)
                 return
+
+
+class MeterBar(Widget):
+    """Input and output meters like the unit's LEDs: one segment per LED
+    (LED_DBFS) and CLIP, coloured like the panel: 3 green, 2 orange ($warning
+    is Dracula's orange), red CLIP. Quieter signals only show in the dB value."""
+
+    SEGMENT = 3  # cells per 6 dB
+    COMPONENT_CLASSES = {"meter--low", "meter--high", "meter--unlit", "meter--clip", "meter--noclip"}
+    DEFAULT_CSS = """
+    MeterBar { height: 1; width: 1fr; }
+    MeterBar > .meter--low { color: $success; }
+    MeterBar > .meter--high { color: $warning; }
+    MeterBar > .meter--unlit { color: $foreground 20%; }
+    MeterBar > .meter--clip { color: $background; background: $error; text-style: bold; }
+    MeterBar > .meter--noclip { color: $foreground 30%; }
+    """
+    meters: reactive[Meters] = reactive(Meters)
+
+    def render(self) -> Text:
+        text = Text()
+        m = self.meters
+        self._meter(text, "IN ", m.input, m.clip_in)
+        text.append("    ")
+        self._meter(text, "OUT", m.output, m.clip_out)
+        return text
+
+    def _meter(self, text: Text, label: str, v: int, clip: bool):
+        style = self.get_component_rich_style
+        db = meter_db(v)
+        text.append(f"{label} ")
+        for k, floor in enumerate(LED_DBFS):
+            top = LED_DBFS[k + 1] if k + 1 < len(LED_DBFS) else 0
+            lit = style("meter--high" if k >= 3 else "meter--low")
+            for c in range(self.SEGMENT):
+                on = db >= floor + (top - floor) * c / self.SEGMENT
+                text.append("█" if on else "░", style=lit if on else style("meter--unlit"))
+            text.append(" ")
+        text.append(" CLIP ", style=style("meter--clip" if clip else "meter--noclip"))
+        text.append(f" {db:4.0f} dB" if v else "    -∞ dB", style=style("meter--noclip"))
 
 
 # --- overlays ---------------------------------------------------------------
