@@ -16,9 +16,10 @@
  * The PRESET page: 16 tiles show a bank of presets (lit: the current one), a tap loads one. Anything that loses
  * or overwrites something is a question first, answered with CONFIRM or CANCEL: loading over unsaved edits,
  * discarding them, saving (SAVE: into the preset they came from; SAVE AS: tap the preset to save into, the empty
- * ones lit), renaming. A save question can change the name first (NAME...: a keyboard replaces the tiles; OK goes
- * back to the question), and RENAME (no unsaved edits) starts with the keyboard. Saving is the plugin's only flash
- * write (tp_core_store). A question is dropped after a while, or when the unit changes under it (another preset,
+ * ones lit), renaming, clearing (CLEAR PRESET: tap the preset to empty, the ones that can be lit). A save question
+ * can change the name first (NAME...: a keyboard replaces the tiles; OK goes back to the question), and RENAME (no
+ * unsaved edits) starts with the keyboard. Saving and clearing are the plugin's only flash writes (tp_core_store,
+ * tp_core_clear). A question is dropped after a while, or when the unit changes under it (another preset,
  * an edit, a store from another instance), since it was asked about what the screen showed then. */
 #define _GNU_SOURCE
 #include <limits.h>
@@ -36,13 +37,13 @@
 #define ASK_TIMEOUT_MS 20000   /* an unanswered question goes away */
 #define NAME_TIMEOUT_MS 60000  /* the keyboard: from the last key */
 #define NOTICE_MS 6000         /* how long the outcome of a store stays up */
-#define EMPTY_PRESET "USER"    /* the name of an empty slot (protocol.py EMPTY_PRESET) */
 #define EQ_CUSTOM 2            /* EQ_MODE: custom bands (layout.py EQ_CUSTOM) */
 
-enum { ACT_SAVE, ACT_SAVEAS, ACT_DISCARD, ACT_CONFIRM, ACT_CANCEL, ACT_RENAME, ACT_NAME };   /* gen_plugin.py ACTIONS */
+enum { ACT_SAVE, ACT_SAVEAS, ACT_DISCARD, ACT_CONFIRM, ACT_CANCEL, ACT_RENAME, ACT_NAME,
+       ACT_CLEAR };   /* gen_plugin.py ACTIONS, CLEAR_ACTION */
 enum { PUI_CLEAN, PUI_EDITED, PUI_PICK, PUI_CONFIRM, PUI_SAVING, PUI_NAMING, PUI_ASKSAVE };   /* gen_plugin.py PUI */
 enum { KEY_DEL = 0x08, KEY_CLEAR = 0x18 };   /* gen_plugin.py KEY_*; a character's key is its code */
-enum { ASK_NONE, ASK_PICK, ASK_SAVE, ASK_LOAD, ASK_DISCARD, ASK_RENAME, ASK_NAME };
+enum { ASK_NONE, ASK_PICK, ASK_SAVE, ASK_LOAD, ASK_DISCARD, ASK_RENAME, ASK_NAME, ASK_PICK_CLEAR, ASK_CLEAR };
 enum { EQV_HIDDEN, EQV_FIXED, EQV_CUSTOM };   /* gen_plugin.py EQ_VIEWS */
 
 static pthread_mutex_t shared_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -169,7 +170,12 @@ static int is_empty(inst_t *in, int n)
 {
     char name[TP_NAME_LEN];
     preset_name(in, n, name, sizeof name);
-    return !strcmp(name, EMPTY_PRESET);
+    return !strcmp(name, TP_EMPTY_PRESET);
+}
+
+static int clearable(inst_t *in, const tp_state_t *s, int n)   /* not empty yet, nor the edits' preset (tp_core_clear) */
+{
+    return !is_empty(in, n) && !(edited(s) && n == source_preset(s));
 }
 
 /* The name a save question stores under: the one typed, else the edit buffer's own. */
@@ -225,7 +231,13 @@ static void tick(inst_t *in, const tp_state_t *s)
         char name[TP_NAME_LEN], line[80];
         in->seen_store = s->store_seq;
         preset_name(in, s->store_slot, name, sizeof name);
-        if (s->store_status == TP_STORE_OK) {
+        if (s->store_cleared && s->store_status == TP_STORE_OK) {
+            snprintf(line, sizeof line, "CLEARED %s", label(in, s->store_slot).s);
+            notice(in, line, "NOW AN EMPTY USER SLOT");
+        } else if (s->store_cleared) {
+            snprintf(line, sizeof line, "%s: CLEAR NOT CONFIRMED", label(in, s->store_slot).s);
+            notice(in, line, "CHECK THE PRESET ON THE UNIT");
+        } else if (s->store_status == TP_STORE_OK) {
             snprintf(line, sizeof line, "SAVED %s", label(in, s->store_slot).s);
             notice(in, line, name);
         } else {
@@ -257,7 +269,8 @@ static int pui(const inst_t *in, const tp_state_t *s)
         return PUI_SAVING;
     switch (in->ask) {
     case ASK_NONE: return edited(s) ? PUI_EDITED : PUI_CLEAN;
-    case ASK_PICK: return PUI_PICK;
+    case ASK_PICK:
+    case ASK_PICK_CLEAR: return PUI_PICK;
     case ASK_NAME: return PUI_NAMING;
     case ASK_SAVE:
     case ASK_RENAME: return PUI_ASKSAVE;
@@ -273,7 +286,8 @@ static int tile_on(inst_t *in, const tp_state_t *s, int tile)
     switch (pui(in, s)) {
     case PUI_CLEAN:
     case PUI_EDITED: return n == source_preset(s);
-    case PUI_PICK: return is_empty(in, n);   /* where the sound can go without replacing anything */
+    case PUI_PICK:   /* where the sound can go without replacing anything, or what can be cleared */
+        return in->ask == ASK_PICK_CLEAR ? clearable(in, s, n) : is_empty(in, n);
     case PUI_SAVING: return n == s->storing;
     default: return n == in->target;         /* the preset the question is about */
     }
@@ -298,10 +312,15 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         snprintf(l[0], sizeof l[0], "TORPEDO NOT CONNECTED");
     else switch (p) {
     case PUI_SAVING:
-        snprintf(l[0], sizeof l[0], "SAVING %s...", label(in, s->storing).s);
+        snprintf(l[0], sizeof l[0], "%s %s...", s->clearing ? "CLEARING" : "SAVING", label(in, s->storing).s);
         snprintf(l[1], sizeof l[1], "KEEP THE TORPEDO PLUGGED IN");
         break;
     case PUI_PICK:
+        if (in->ask == ASK_PICK_CLEAR) {
+            snprintf(l[0], sizeof l[0], "CLEAR WHICH PRESET?");
+            snprintf(l[1], sizeof l[1], "TAP ONE OF THE LIT PRESETS");
+            break;
+        }
         snprintf(l[0], sizeof l[0], "SAVE INTO WHICH PRESET?");
         snprintf(l[1], sizeof l[1], "TAP IT (THE LIT ONES ARE EMPTY)");
         break;
@@ -329,7 +348,11 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         }
         break;
     case PUI_CONFIRM:
-        if (in->ask == ASK_LOAD) {
+        if (in->ask == ASK_CLEAR) {
+            preset_name(in, in->target, name, sizeof name);
+            snprintf(l[0], sizeof l[0], "CLEAR %s %s?", label(in, in->target).s, name);
+            snprintf(l[1], sizeof l[1], "IT BECOMES AN EMPTY USER SLOT");
+        } else if (in->ask == ASK_LOAD) {
             snprintf(l[0], sizeof l[0], "LOAD %s?", label(in, in->target).s);
             snprintf(l[1], sizeof l[1], "THE EDITS TO %s ARE DROPPED", label(in, src).s);
         } else {
@@ -358,6 +381,11 @@ static void tap(inst_t *in, const tp_state_t *s, int n)
         return;
     if (in->ask == ASK_PICK) {
         ask(in, s, ASK_SAVE, n);
+        return;
+    }
+    if (in->ask == ASK_PICK_CLEAR) {
+        if (clearable(in, s, n))
+            ask(in, s, ASK_CLEAR, n);
         return;
     }
     if (in->ask != ASK_NONE)
@@ -409,6 +437,10 @@ static void act(inst_t *in, const tp_state_t *s, int action)
         if (in->ask == ASK_NONE && edited(s))
             ask(in, s, ASK_DISCARD, src);
         break;
+    case ACT_CLEAR:
+        if (in->ask == ASK_NONE)
+            ask(in, s, ASK_PICK_CLEAR, src);
+        break;
     case ACT_RENAME:   /* with edits, renaming would store them too: SAVE or SAVE AS, then NAME..., is that */
         if (in->ask == ASK_NONE && !edited(s)) {
             in->save_name[0] = 0;
@@ -441,6 +473,7 @@ static void act(inst_t *in, const tp_state_t *s, int action)
             return;
         case ASK_SAVE:
         case ASK_RENAME: tp_core_store(in->core, in->target, in->save_name); break;
+        case ASK_CLEAR: tp_core_clear(in->core, in->target); break;
         case ASK_LOAD:
         case ASK_DISCARD: tp_core_select_preset(in->core, in->target); break;
         default: return;

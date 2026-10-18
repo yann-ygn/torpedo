@@ -20,6 +20,9 @@
 #define TP_QUERY_PARAMS 0x0A
 #define TP_QUERY_SETUP 0x0B
 #define TP_QUERY_STORE 0x73
+#define TP_QUERY_CLEAR 0x69
+#define TP_QUERY_COMMIT 0x0E
+#define TP_STATUS 0x0D
 #define TP_BANK_END 0x10
 #define TP_NAMES_ALL 0x81
 #define TP_NAMES_EDIT_BUFFER 0x80
@@ -40,6 +43,7 @@
 #define TP_IR_BANK 1
 #define TP_NAME_MAX 25
 #define TP_NAME_CHARS " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"  /* what a preset name may hold */
+#define TP_EMPTY_PRESET "USER"  /* the name of an empty slot */
 
 #define TP_NPARAMS 51
 enum {

@@ -363,6 +363,24 @@ def type_name(host, text: str):
     host.settle()
 
 
+def test_clear_lights_what_can_be_cleared_and_asks_first(host, bridge):
+    edit(host)  # A001 has unsaved edits: it can't be cleared
+    press(host, "p_clear")
+    assert host.text("pui") == "PICK" and message(host) == ("CLEAR WHICH PRESET?", "TAP ONE OF THE LIT PRESETS")
+    assert [host.get(f"slot_{n}")[0] for n in (1, 2)] == [0, 1]
+    press(host, "slot_1")  # not one of the lit ones: nothing
+    assert host.text("pui") == "PICK"
+    press(host, "slot_2")
+    assert message(host) == ("CLEAR A002 BDELUXE 1 DYN421?", "IT BECOMES AN EMPTY USER SLOT")
+    assert not bridge.fake.clears  # nothing until confirmed
+    press(host, "p_confirm")
+    wait_text(host, "pui", "EDITED")
+    assert bridge.fake.clears == [1] and bridge.fake.names[1] == "USER"
+    assert message(host) == ("CLEARED S002", "NOW AN EMPTY USER SLOT")
+    assert host.text("slot_2") == "S002 USER"
+    bridge.fake.clears.clear()  # the fixture insists that nothing else writes flash
+
+
 def test_rename_types_a_name_then_asks_before_storing(host, bridge):
     press(host, "p_rename")
     assert host.text("pui") == "NAMING"

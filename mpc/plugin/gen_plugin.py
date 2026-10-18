@@ -8,7 +8,7 @@ first (MPC pokes parameter 0 on insert and on every STOP, and `view` ignores wri
 parameters in protocol order (minus the preview and the pinned IR folders), the output level and mute, then
 the steppers' prev/next triggers, then the PRESET page's: 16 tiles, the bank they show, the page's state, two
 message lines, the action buttons, the name being typed, the name keyboard's keys and whether it shows; then
-the EQ page's `eq_view`.
+the EQ page's `eq_view`, then the PRESET page's clear button.
 
 `view` (offline / simulation / arcade / ir) is what the skin's `when=view:...` lines hang on, and `eq_view` (hidden
 offline and in arcade / fixed bands / custom) the EQ page's: a line takes one condition. Each Torpedo parameter
@@ -43,6 +43,7 @@ PUI = ("CLEAN", "EDITED", "PICK", "CONFIRM", "SAVING", "NAMING", "ASKSAVE")  # w
 ACTIONS = (("p_save", "Save preset"), ("p_saveas", "Save preset as"), ("p_discard", "Discard edits"),
            ("p_confirm", "Confirm"), ("p_cancel", "Cancel"), ("p_rename", "Rename preset"),
            ("p_name", "Edit name"))  # engine.c ACT_*
+CLEAR_ACTION = ("p_clear", "Clear preset")  # engine.c ACT_CLEAR, after ACTIONS: it came later, at the end of the list
 KEY_DEL, KEY_CLEAR = 0x08, 0x18  # the name keyboard's other keys (engine.c KEY_*); a character's key is its code
 
 
@@ -155,6 +156,8 @@ def vst_params():
         out.append(({"key": k, "name": name, "min": 0, "max": 1, "momentary": True}, ("PP_KEY", code, None)))
     out.append(({"key": "pkb", "name": "Name keyboard", "options": ["OFF", "ON"]}, ("PP_PUI", 1, None)))
     out.append(({"key": "eq_view", "name": "EQ view", "options": [v.upper() for v in EQ_VIEWS]}, ("PP_VIEW", 1, None)))
+    out.append(({"key": CLEAR_ACTION[0], "name": CLEAR_ACTION[1], "min": 0, "max": 1, "momentary": True},
+                ("PP_ACTION", len(ACTIONS), None)))
     seen = [e["name"] for e, _ in out]
     if len(set(seen)) != len(seen):
         raise SystemExit(f"duplicate names: {sorted(n for n in seen if seen.count(n) > 1)}")

@@ -997,6 +997,13 @@
     "FIXED",
     "CUSTOM"
    ]
+  },
+  {
+   "key": "p_clear",
+   "name": "Clear preset",
+   "min": 0,
+   "max": 1,
+   "momentary": true
   }
  ]
 }

@@ -11,13 +11,15 @@
 #include "tp_dev.h"
 #include "tp_hid.h"
 
-enum { OP_PARAM, OP_SETUP, OP_PRESET, OP_CAB, OP_IR, OP_STORE };
+enum { OP_PARAM, OP_SETUP, OP_PRESET, OP_CAB, OP_IR, OP_STORE, OP_CLEAR };
 typedef struct {
-    uint8_t kind, index;   /* index: the parameter, setting, IR slot or preset to store (0 for a preset or cab selection) */
+    uint8_t kind, index;   /* index: the parameter, setting, IR slot or preset to store or clear (0 for a preset or cab
+                              selection) */
     int value;
 } op_t;
-#define MAX_OPS (TP_NPARAMS + TP_NSETUP + 5)   /* one per kind and index (one store at a time) */
-#define TP_STORE_TIMEOUT_MS 6000   /* storing a preset was answered after ~2.1 s (device.py STORE_TIMEOUT) */
+#define MAX_OPS (TP_NPARAMS + TP_NSETUP + 5)   /* one per kind and index (one store or clear at a time) */
+#define TP_STORE_TIMEOUT_MS 6000   /* storing a preset was answered after ~2.1 s, a clear's steps after ~0.8 and ~1.4 s
+                                     (device.py STORE_TIMEOUT) */
 
 typedef struct {
     int count;
@@ -50,7 +52,7 @@ struct tp_core {
     int nops, busy;
     tp_changes_t changes;
     unsigned revision;   /* +1 whenever changes are noted */
-    int storing, store_status, store_slot;   /* see tp_state_t */
+    int storing, clearing, store_status, store_slot, store_cleared;   /* see tp_state_t */
     unsigned store_seq;
     char store_name[TP_NAME_MAX + 1];   /* the name the queued store gives the buffer first, or "" */
     bank_t cabs, irs;
@@ -109,7 +111,8 @@ static void settle(tp_core_t *c, const op_t *op)
     case OP_PRESET: want = &c->want_setup[TP_S_SETUP_PRESET]; break;
     case OP_CAB: want = &c->want_param[TP_P_SIMUHP_SPEAKER]; break;
     case OP_IR: want = &c->want_param[WAVES[op->index]]; break;
-    case OP_STORE: return;   /* nothing is shown ahead of it */
+    case OP_STORE:
+    case OP_CLEAR: return;   /* nothing is shown ahead of them */
     }
     if (*want == op->value)
         *want = -1;
@@ -244,6 +247,7 @@ static int send_cab(tp_core_t *c, int cab)   /* device.py select_cab */
 }
 
 static int send_store(tp_core_t *c, int n);
+static int send_clear(tp_core_t *c, int n);
 
 static int run_op(tp_core_t *c, const op_t *op)
 {
@@ -257,6 +261,7 @@ static int run_op(tp_core_t *c, const op_t *op)
             return -1;
         return send_param(c, WAVES[op->index], op->value);
     case OP_STORE: return send_store(c, op->value);
+    case OP_CLEAR: return send_clear(c, op->value);
     }
     return 0;
 }
@@ -310,6 +315,18 @@ static int rename_buffer(tp_core_t *c, const char *name)
     return tp_exchange(&c->dev, cmd, 2 + n, is_renamed, (void *)name);
 }
 
+/* A store or clear ended (under the lock): tp_state_t says how. */
+static void flash_done(tp_core_t *c, int ok)
+{
+    c->store_status = ok ? TP_STORE_OK : TP_STORE_FAILED;
+    c->store_slot = c->storing;
+    c->store_cleared = c->clearing;
+    c->store_seq++;
+    c->storing = -1;
+    c->clearing = 0;
+    c->revision++;
+}
+
 /* device.py save: the buffer renamed if asked (and only stored once the unit said so), then `04 73 n` stores it. Whether
  * it took is checked by reading the names back (the stored one must be the buffer's), also when the unit didn't
  * answer in time. */
@@ -338,11 +355,44 @@ static int send_store(tp_core_t *c, int n)
     pthread_mutex_lock(&c->lock);
     int ok = sent && r == 0 && !strcmp(c->names[n].name, c->names[TP_EDIT_BUFFER].name)
              && (!name[0] || !strcmp(c->names[n].name, name));
-    c->storing = -1;
-    c->store_status = ok ? TP_STORE_OK : TP_STORE_FAILED;
-    c->store_slot = n;
-    c->store_seq++;
-    c->revision++;
+    flash_done(c, ok);
+    pthread_mutex_unlock(&c->lock);
+    return lost ? -1 : 0;
+}
+
+static int is_done(const uint8_t *p, void *ctx)   /* `04 0d 00`: a flash write is through */
+{
+    (void)ctx;
+    return p[0] == TP_MSG_QUERY && p[1] == TP_STATUS && p[2] == 0;
+}
+
+/* device.py clear_preset: `04 69 n`, then the commit `04 0e`, each answered `04 0d 00`. Whether it took is checked by
+ * reading the names back (n must be "USER"); the current preset's parameters are read again too, as the unit only
+ * renames the edit buffer. Not sent if a change queued before it left n with unsaved edits (tp_core_clear). */
+static int send_clear(tp_core_t *c, int n)
+{
+    tp_dev_t *d = &c->dev;
+    const uint8_t clear[] = {TP_MSG_QUERY, TP_QUERY_CLEAR, n}, commit[] = {TP_MSG_QUERY, TP_QUERY_COMMIT};
+    int current = d->setup[TP_S_SETUP_PRESET] == n, lost = 0;
+    if (d->setup[TP_S_SETUP_PRESET] == TP_EDIT_BUFFER && d->setup[TP_S_SETUP_PRESET_SOURCE] == n) {
+        pthread_mutex_lock(&c->lock);
+        flash_done(c, 0);
+        pthread_mutex_unlock(&c->lock);
+        return 0;
+    }
+    d->timeout_ms = TP_STORE_TIMEOUT_MS;
+    int r = tp_exchange(d, clear, sizeof clear, is_done, NULL);
+    if (!r)
+        r = tp_exchange(d, commit, sizeof commit, is_done, NULL);
+    d->timeout_ms = TP_TIMEOUT_MS;
+    if (r < 0)
+        lost = errno != ETIMEDOUT;
+    if (!lost) {
+        r = read_names(c) < 0 || (current && tp_read_params(d) < 0) ? -1 : 0;
+        lost = r < 0 && errno != ETIMEDOUT;
+    }
+    pthread_mutex_lock(&c->lock);
+    flash_done(c, r == 0 && !strcmp(c->names[n].name, TP_EMPTY_PRESET));
     pthread_mutex_unlock(&c->lock);
     return lost ? -1 : 0;
 }
@@ -464,12 +514,8 @@ static void *worker(void *arg)
         c->busy = 0;
         if (r < 0) {   /* unplugged (or unresponsive): start over */
             tp_close(&c->dev);
-            if (c->storing >= 0) {   /* queued, or cut short before it could say */
-                c->store_status = TP_STORE_FAILED;
-                c->store_slot = c->storing;
-                c->store_seq++;
-                c->storing = -1;
-            }
+            if (c->storing >= 0)   /* queued, or cut short before it could say */
+                flash_done(c, 0);
             c->connected = 0;
             c->changes.flags |= TP_CHANGED_CONNECTION;
             c->revision++;
@@ -547,8 +593,10 @@ void tp_core_state(tp_core_t *c, tp_state_t *s)
     s->meter_out = c->meter_out;
     s->clip = c->clip;
     s->storing = c->storing;
+    s->clearing = c->clearing;
     s->store_status = c->store_status;
     s->store_slot = c->store_slot;
+    s->store_cleared = c->store_cleared;
     s->store_seq = c->store_seq;
     pthread_mutex_unlock(&c->lock);
 }
@@ -690,8 +738,28 @@ int tp_core_store(tp_core_t *c, int n, const char *name)
         return fail(c, EBUSY);
     snprintf(c->store_name, sizeof c->store_name, "%s", name ? name : "");
     c->storing = n;   /* from now on until it ends: the screen says so */
+    c->clearing = 0;
     c->revision++;
     enqueue(c, OP_STORE, n, n);
+    pthread_mutex_unlock(&c->lock);
+    return 0;
+}
+
+int tp_core_clear(tp_core_t *c, int n)
+{
+    pthread_mutex_lock(&c->lock);
+    if (!c->connected)
+        return fail(c, ENOTCONN);
+    if (n < 0 || n >= TP_PRESETS)
+        return fail(c, EINVAL);
+    if (c->storing >= 0)
+        return fail(c, EBUSY);
+    if (vis_setup(c, TP_S_SETUP_PRESET) == TP_EDIT_BUFFER && vis_setup(c, TP_S_SETUP_PRESET_SOURCE) == n)
+        return fail(c, EPERM);   /* device.py refuses it too: what the unit does then wasn't seen */
+    c->storing = n;
+    c->clearing = 1;
+    c->revision++;
+    enqueue(c, OP_CLEAR, n, n);
     pthread_mutex_unlock(&c->lock);
     return 0;
 }

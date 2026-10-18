@@ -72,7 +72,7 @@ reference implementation.
   round trip (`04 01` → `0b` info) works. `mpc/`: C core (`core/tp_hid.c` hidraw or
   `unix:` socket, `core/tp_dev.c` exchange/poll/cache like device.py), tables
   generated from protocol.py by `mpc/gen_tables.py` (flash-writing commands left
-  out, except the preset store the PRESET page needs), `probe/probe.c` (read-only
+  out, except the preset store and clear the PRESET page needs), `probe/probe.c` (read-only
   check, `--listen`). `make -C mpc host` (ASan,
   used by tests/test_mpc.py against tests/fakebridge.py), `make -C mpc arm` (static
   musl via Zig from PyPI: no Docker here). The plugin builds on github.com/sd88me/mpc-vst-plugins
@@ -128,7 +128,11 @@ reference implementation.
   CONFIRM/CANCEL question (`engine.c` state machine; the `pui` param drives the buttons'
   `when=`), dropped after 20 s or when the unit changes under it. SAVE AS lights the empty
   ("USER") slots. A save is `tp_core_store` (`04 73 n`, after the queued writes, names re-read
-  to check it): the only flash write the C side exports. Checked on the Key 37. Presets read like
+  to check it). Checked on the Key 37. CLEAR PRESET (2026-10-18) is the TUI's Delete: pick a lit
+  tile (not empty, not the one with edits), confirm; `tp_core_clear` (`04 69 n`, `04 0e`, names
+  and the current preset's parameters re-read; shares the store's one-at-a-time slot), not sent
+  if an edit queued before it hit the same preset. The two are the only flash writes the C side
+  exports. Presets read like
   the unit's panel, mode letter then number (S021), here and in the CLI/TUI (`preset_name(n, mode)`,
   `preset_index` takes them with or without the letter): a slot's from the name list's mode byte
   (its PRESET_MODE, 2 = IR seen on the unit), the current sound's from its own PRESET_MODE. Mute toggles are red when on.

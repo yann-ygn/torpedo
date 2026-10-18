@@ -19,5 +19,5 @@ typedef struct {
     uint8_t modes;               /* PP_PARAM: a bit per PRESET_MODE whose page shows it (writes in the others are dropped) */
 } pp_param_t;
 
-#define PP_NPARAMS 133
+#define PP_NPARAMS 134
 extern const pp_param_t pp_params[PP_NPARAMS];

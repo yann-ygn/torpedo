@@ -14,7 +14,7 @@ import pytest
 
 from fakebridge import FakeBridge
 from torpedo.fake import A001, CABS, ML_IRS, PRESET_NAMES, SETUP_VALUES, FakeHid
-from torpedo.protocol import (EDIT_BUFFER, MSG_NAME, MSG_PARAM, MSG_QUERY, PARAM_BY_NAME, PARAMS,
+from torpedo.protocol import (EDIT_BUFFER, EMPTY_PARAMS, MSG_NAME, MSG_PARAM, MSG_QUERY, PARAM_BY_NAME, PARAMS,
                               QUERY_SETUP, SETUP)
 
 MPC = Path(__file__).resolve().parent.parent / "mpc"
@@ -278,7 +278,7 @@ def test_store_writes_the_edit_into_a_slot(ctl, bridge):
     ctl.cmd("set ARCADE_CONTOUR 30")  # edit A001
     ctl.settle()
     ctl.cmd("store 80")
-    assert stored(ctl) == {"storing": -1, "status": 1, "slot": 80, "seq": 1}
+    assert stored(ctl) == {"storing": -1, "clearing": 0, "status": 1, "slot": 80, "cleared": 0, "seq": 1}
     assert bridge.fake.stores == [80]
     assert bridge.fake.presets[80][P["ARCADE_CONTOUR"]] == 30
     assert ctl.cmd("names")[80] == f"name 80 1 {PRESET_NAMES[0]}"  # the buffer's name; the names were read back
@@ -316,6 +316,47 @@ def test_store_under_a_new_name_renames_the_buffer_first(ctl, bridge):
     bridge.fake.stores.clear()
 
 
+def test_clear_empties_another_preset(ctl, bridge):
+    ctl.cmd("clear 3")
+    assert stored(ctl) == {"storing": -1, "clearing": 0, "status": 1, "slot": 3, "cleared": 1, "seq": 1}
+    assert bridge.fake.clears == [3] and bridge.fake.presets[3] == EMPTY_PARAMS
+    assert [b[:3] for b in bridge.fake.sent if b[0] == MSG_QUERY][-3:] == [bytes([4, 0x69, 3]), bytes([4, 0x0E, 0]),
+                                                                           bytes([4, 9, 0x81])]
+    assert ctl.cmd("names")[3] == "name 3 0 USER"  # simulation, like every empty slot
+    bridge.fake.clears.clear()  # the fixture insists that nothing else writes flash
+
+
+def test_clearing_the_current_preset_reads_its_parameters_again(ctl, bridge):
+    """The unit only renames the edit buffer: the parameters it now holds come from reading them."""
+    ctl.cmd("clear 0")  # A001, unedited
+    assert stored(ctl)["status"] == 1
+    params = ctl.state()[0]
+    assert [params[p.name] for p in PARAMS] == EMPTY_PARAMS
+    bridge.fake.clears.clear()
+
+
+def test_a_clear_behind_an_edit_of_its_preset_is_not_sent(ctl, bridge):
+    with bridge.lock:  # the unit isn't answering yet: A001 isn't edited when the clear is asked for
+        ctl.cmd("set ARCADE_CONTOUR 30")
+        ctl.cmd("clear 0")
+    assert stored(ctl) == {"storing": -1, "clearing": 0, "status": 2, "slot": 0, "cleared": 1, "seq": 1}
+    assert not bridge.fake.clears and bridge.fake.names[0] == PRESET_NAMES[0]
+
+
+def test_clear_refuses_the_preset_with_unsaved_edits_and_waits_its_turn(ctl, bridge):
+    ctl.cmd("set ARCADE_CONTOUR 30")  # edit A001
+    ctl.settle()
+    with pytest.raises(CtlError, match="not permitted"):
+        ctl.cmd("clear 0")
+    with bridge.lock:  # the unit isn't answering yet
+        ctl.cmd("store 80")
+        with pytest.raises(CtlError, match="busy"):
+            ctl.cmd("clear 81")
+    assert stored(ctl)["status"] == 1
+    assert bridge.fake.stores == [80] and not bridge.fake.clears
+    bridge.fake.stores.clear()
+
+
 def test_store_refuses_names_the_unit_does_not_take(ctl, bridge):
     for bad in ("lower case", "TWENTY SIX CHARACTERS LONG", "DASH-ED"):
         with pytest.raises(CtlError, match="Invalid argument"):
@@ -339,7 +380,7 @@ def test_a_store_cut_short_is_reported_as_failed(ctl, bridge):
         bridge._conn.shutdown(socket.SHUT_RDWR)  # the cable is pulled before the unit answers
     ctl.wait_change("connection 0")
     ctl.wait_change("connection 1")  # and put back: everything is read again
-    assert stored(ctl) == {"storing": -1, "status": 2, "slot": 80, "seq": 1}  # no answer: reported as failed
+    assert stored(ctl) == {"storing": -1, "clearing": 0, "status": 2, "slot": 80, "cleared": 0, "seq": 1}  # failed
     assert bridge.fake.stores in ([], [80])  # the unit may have got the command before the cable went
     bridge.fake.stores.clear()
 

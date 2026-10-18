@@ -35,9 +35,11 @@ typedef struct {
     int params[TP_NPARAMS];   /* with the queued values on top */
     int setup[TP_NSETUP];
     uint8_t meter_in, meter_out, clip;
-    int storing;               /* the preset being stored (queued or running, ~2 s), else -1 */
-    int store_status;          /* how the last store ended: TP_STORE_* */
-    int store_slot;            /* ...and which preset it was */
+    int storing;               /* the preset being stored or cleared (queued or running, ~2 s), else -1 */
+    int clearing;              /* ...1 if cleared (tp_core_clear) */
+    int store_status;          /* how the last store or clear ended: TP_STORE_* */
+    int store_slot;            /* ...which preset it was */
+    int store_cleared;         /* ...and 1 if it was a clear */
     unsigned store_seq;        /* +1 whenever one ends */
 } tp_state_t;
 
@@ -79,6 +81,11 @@ int tp_core_select_ir(tp_core_t *c, int slot, int ir);   /* IR slot 0/1, from th
  * tp_state_t says how it went (store_status). Only one at a time: -1 with errno EBUSY. ENOTCONN, EINVAL (a preset
  * number or a name out of range) as above. */
 int tp_core_store(tp_core_t *c, int n, const char *name);
+/* Empty preset n, 0..127, like Remote's Delete (device.py clear_preset): it becomes "USER" holding the default sound.
+ * A flash write (`04 69 n`, then the commit `04 0e`) that takes about 2 s, after the changes queued before it; then
+ * the names, and the parameters if it was the current preset, are read back and tp_state_t says how it went. Shares
+ * tp_core_store's one at a time (EBUSY); EPERM for the preset the sound comes from while it has unsaved edits. */
+int tp_core_clear(tp_core_t *c, int n);
 /* Wait until every queued change has been handled: 0, or -1 with errno ETIMEDOUT. */
 int tp_core_wait_idle(tp_core_t *c, int timeout_ms);
 
