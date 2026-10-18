@@ -9,14 +9,15 @@ typedef struct {
     const char *key;             /* params.json */
     uint8_t kind;                /* PP_* */
     uint8_t index;               /* PP_PARAM: tp_params index, PP_SETUP: tp_setup_names index, PP_SLOT: tile,
-                                  PP_MSG: line, PP_ACTION: engine.c ACT_*, PP_KEY: character or engine.c KEY_* */
+                                  PP_MSG: line, PP_ACTION: engine.c ACT_*, PP_KEY: character or engine.c KEY_*,
+                                  PP_VIEW: 0 view, 1 eq_view */
     uint8_t list;                /* value text from the unit's banks: PP_LIST_* */
-    uint8_t eq_custom;           /* only meaningful in custom EQ mode, else otherwise[EQ_MODE] */
+    uint8_t eq_custom;           /* only in custom EQ mode (else otherwise[EQ_MODE]; writes are dropped) */
     const char *const *text;     /* value text per value, or NULL */
     int ntext;
     const char *otherwise[2];    /* the text outside custom EQ mode (guitar, bass) */
     uint8_t modes;               /* PP_PARAM: a bit per PRESET_MODE whose page shows it (writes in the others are dropped) */
 } pp_param_t;
 
-#define PP_NPARAMS 132
+#define PP_NPARAMS 133
 extern const pp_param_t pp_params[PP_NPARAMS];

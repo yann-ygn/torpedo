@@ -988,6 +988,15 @@
     "OFF",
     "ON"
    ]
+  },
+  {
+   "key": "eq_view",
+   "name": "EQ view",
+   "options": [
+    "HIDDEN",
+    "FIXED",
+    "CUSTOM"
+   ]
   }
  ]
 }

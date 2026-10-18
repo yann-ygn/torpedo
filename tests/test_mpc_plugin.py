@@ -189,6 +189,29 @@ def test_other_modes_drop_what_their_pages_dont_show(host, bridge):
     assert bridge.fake.params[P["ARCADE_TONE"]] == 38
 
 
+def test_band_frequencies_only_move_in_custom_eq(host, bridge):
+    """The EQ page's Q-Links stay on the custom bands' frequencies and low cut: fixed bands drop them."""
+    assert host.text("eq_view") == "HIDDEN"  # arcade
+    host.set("preset_mode", 0)
+    host.settle()
+    host.wait_view("SIMULATION")
+    assert host.text("eq_view") == "FIXED"  # A001: guitar
+    sent = len(bridge.fake.sent)
+    host.set("eq_l_freq_f0", 70)
+    host.set("eq_l_freq_low", 30)
+    host.settle()
+    freqs = (P["EQ_L_FREQ_F0"], P["EQ_L_FREQ_LOW"])
+    assert not any(b[0] == MSG_PARAM and b[1] in freqs for b in bridge.fake.sent[sent:])
+    host.set("eq_mode", 2)
+    host.settle()
+    assert host.text("eq_view") == "CUSTOM"
+    host.set("eq_l_freq_f0", 70)
+    host.set("eq_l_freq_low", 30)
+    host.settle()
+    assert (bridge.fake.params[P["EQ_L_FREQ_F0"]], bridge.fake.params[P["EQ_L_FREQ_LOW"]]) == (70, 30)
+    assert host.text("eq_l_freq_f0") == "70"
+
+
 def test_front_panel_follows(host, bridge):
     with bridge.lock:
         bridge.fake.panel_param(P["ARCADE_TONE"], 40)

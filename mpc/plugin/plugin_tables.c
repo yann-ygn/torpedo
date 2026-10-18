@@ -140,4 +140,5 @@ const pp_param_t pp_params[PP_NPARAMS] = {
     {"k_del", PP_KEY, 8, PP_LIST_NONE, 0, 0, 0, {"-", "-"}, 0},
     {"k_clear", PP_KEY, 24, PP_LIST_NONE, 0, 0, 0, {"-", "-"}, 0},
     {"pkb", PP_PUI, 1, PP_LIST_NONE, 0, 0, 0, {"-", "-"}, 0},
+    {"eq_view", PP_VIEW, 1, PP_LIST_NONE, 0, 0, 0, {"-", "-"}, 0},
 };

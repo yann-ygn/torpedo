@@ -98,14 +98,19 @@ reference implementation.
   control picks it, the Q-Link button steps through them (confirmed on the Key 37).
   **Modes (2026-10-18):** a tab's Q-Links and outlines are fixed at build time (`when=` only hides
   controls, one condition per line), so a mode with other controls gets its own tab: PRESET |
-  ARCADE | AMP | CAB | IR | EQ. AMP and EQ serve simulation and IR (lines repeated with
-  `when=view:ir`); in arcade AMP/CAB/EQ show the values arcade sets as read-only readouts (what it
+  ARCADE | AMP | CAB | IR | EQ. AMP serves simulation and IR (lines repeated with
+  `when=view:ir`), EQ too (through `eq_view`, below); in arcade AMP/CAB/EQ show the values arcade sets as read-only readouts (what it
   takes itself, cab, mic A, room, output, stays live); other tabs show a placeholder. The engine
   drops writes to what the preset's mode doesn't show (`modes` in plugin_tables, from layout.py's
   LAYOUTS), so a Q-Link left on a hidden control edits nothing. Switching mode recomputes nothing
   (PROTOCOL.md), and Remote only writes PRESET_MODE too (`01 22 0x` in the -irs and -presets
-  captures, then `04 09 80` for the name's mode byte): so does the plugin. EQ: guitar/bass bands
-  (5 gains), custom ignored. Choosers are readout + arrow buttons drawn from `images/*.svg`
+  captures, then `04 09 80` for the name's mode byte): so does the plugin.
+  **EQ (2026-10-18):** Remote's custom EQ: low cut, then each band's gain over its frequency
+  (raw 0..127: the Hz mapping is unknown). The engine's virtual `eq_view` (hidden offline and in
+  arcade / fixed / custom) drives it, since a line takes one condition; guitar/bass show the fixed
+  band frequencies as labels. Q-Links: two neighbouring bands per group (low cut + band 1, 2-3,
+  4-5: a tab has 4 groups); outside custom only the gains turn, the engine drops the rest
+  (`eq_custom` in plugin_tables). Choosers are readout + arrow buttons drawn from `images/*.svg`
   (the browser renderer has no sized plain buttons). The skin is drawn by the browser
   renderer (`"art": "html"`) on the system Chromium through `plugin/html_art_local` (no Docker).
   `plugin/skin_post.py` (vst.json `skin_post`) drops the builder's Mouse Down → Toggle Switch from

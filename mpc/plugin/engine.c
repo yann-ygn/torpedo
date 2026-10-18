@@ -7,9 +7,9 @@
  * - "display_rev" is the core's revision plus this instance's own (the PRESET page's state), so the wrapper
  *   (HAS_DISPLAY_REV) reports what changed by itself (front panel, linked parameters, preset loads, the
  *   connection, a question timing out) and redraws texts and when= panels.
- * - A write to a parameter the preset's mode doesn't show (pp_param_t.modes, from layout.py) is dropped: a tab's
- *   Q-Links stay on its controls whatever the mode, and in simulation or IR mode the unit would take it, an edit
- *   nobody hears.
+ * - A write to a parameter the preset's mode doesn't show (pp_param_t.modes, from layout.py) is dropped, and so is
+ *   one to the custom EQ's frequencies outside custom EQ: a tab's Q-Links stay on its controls whatever the mode,
+ *   and in simulation or IR mode the unit would take it, an edit nobody hears.
  * - No "state": nothing is saved with the project or pushed to the unit when one loads.
  * - TORPEDO_DEVICE in the environment overrides the device path (tests: unix:<socket>).
  *
@@ -37,11 +37,13 @@
 #define NAME_TIMEOUT_MS 60000  /* the keyboard: from the last key */
 #define NOTICE_MS 6000         /* how long the outcome of a store stays up */
 #define EMPTY_PRESET "USER"    /* the name of an empty slot (protocol.py EMPTY_PRESET) */
+#define EQ_CUSTOM 2            /* EQ_MODE: custom bands (layout.py EQ_CUSTOM) */
 
 enum { ACT_SAVE, ACT_SAVEAS, ACT_DISCARD, ACT_CONFIRM, ACT_CANCEL, ACT_RENAME, ACT_NAME };   /* gen_plugin.py ACTIONS */
 enum { PUI_CLEAN, PUI_EDITED, PUI_PICK, PUI_CONFIRM, PUI_SAVING, PUI_NAMING, PUI_ASKSAVE };   /* gen_plugin.py PUI */
 enum { KEY_DEL = 0x08, KEY_CLEAR = 0x18 };   /* gen_plugin.py KEY_*; a character's key is its code */
 enum { ASK_NONE, ASK_PICK, ASK_SAVE, ASK_LOAD, ASK_DISCARD, ASK_RENAME, ASK_NAME };
+enum { EQV_HIDDEN, EQV_FIXED, EQV_CUSTOM };   /* gen_plugin.py EQ_VIEWS */
 
 static pthread_mutex_t shared_lock = PTHREAD_MUTEX_INITIALIZER;
 static tp_core_t *shared_core;
@@ -456,6 +458,9 @@ static int value(const inst_t *in, const pp_param_t *pp, const tp_state_t *s)
     switch (pp->kind) {
     case PP_VIEW:
         v = s->params[TP_P_PRESET_MODE];
+        if (pp->index)   /* eq_view */
+            return !s->connected || v == TP_ARCADE ? EQV_HIDDEN
+                 : s->params[TP_P_EQ_MODE] == EQ_CUSTOM ? EQV_CUSTOM : EQV_FIXED;
         return s->connected ? 1 + (v >= 0 && v <= TP_IR ? v : 0) : 0;
     case PP_PRESET: return 1 + source_preset(s);
     case PP_PARAM: v = s->params[pp->index]; break;
@@ -476,7 +481,7 @@ static int text(inst_t *in, const pp_param_t *pp, const tp_state_t *s, char *buf
         return snprintf(buf, len, "%c%03d%s %s", mode_letter(s->params[TP_P_PRESET_MODE]), n + 1,
                         edited(s) ? "*" : "", name);
     }
-    if (pp->eq_custom && s->params[TP_P_EQ_MODE] != 2) {
+    if (pp->eq_custom && s->params[TP_P_EQ_MODE] != EQ_CUSTOM) {
         int mode = s->params[TP_P_EQ_MODE] == 1;
         return snprintf(buf, len, "%s", pp->otherwise[mode]);
     }
@@ -549,7 +554,8 @@ static void set_param(void *p, const char *key, const char *val)
     case PP_PARAM:
         tp_core_state(in->core, &s);
         mode = s.params[TP_P_PRESET_MODE];
-        if (mode < 0 || mode > TP_IR || !(pp->modes & 1 << mode))
+        if (mode < 0 || mode > TP_IR || !(pp->modes & 1 << mode)
+            || (pp->eq_custom && s.params[TP_P_EQ_MODE] != EQ_CUSTOM))
             break;
         if (pp->list == PP_LIST_CAB)
             tp_core_select_cab(in->core, clamp(v, tp_core_cab_count(in->core) - 1));
