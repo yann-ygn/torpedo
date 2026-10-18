@@ -17,7 +17,8 @@ typedef struct {
                               selection) */
     int value;
 } op_t;
-#define MAX_OPS (TP_NPARAMS + TP_NSETUP + 5)   /* one per kind and index (one store or clear at a time) */
+#define MAX_OPS (2 * (TP_NPARAMS + TP_NSETUP + 4) + 1)   /* one per kind and index on each side of the store or clear
+                                                          * (one at a time, see enqueue) */
 #define TP_STORE_TIMEOUT_MS 6000   /* storing a preset was answered after ~2.1 s, a clear's steps after ~0.8 and ~1.4 s
                                      (device.py STORE_TIMEOUT) */
 
@@ -60,7 +61,7 @@ struct tp_core {
     /* worker only */
     tp_dev_t dev;
     bank_t stage;   /* a bank being read */
-    int saw_edit, saw_source;   /* during one operation: `0c 03 80`, `0c 04 n` */
+    int saw_edit, saw_load, saw_source;   /* during one operation: `0c 03 80`, `0c 03 n`, `0c 04 n` */
 };
 
 static void deadline_in(struct timespec *t, int ms)
@@ -164,6 +165,8 @@ static int on_msg(const uint8_t *p, void *ctx)
     tp_core_t *c = ctx;
     if (p[0] == TP_MSG_SETUP && p[1] == TP_SETUP_PRESET && p[2] == TP_EDIT_BUFFER)
         c->saw_edit = 1;
+    else if (p[0] == TP_MSG_SETUP && p[1] == TP_SETUP_PRESET)
+        c->saw_load = 1;
     else if (p[0] == TP_MSG_SETUP && p[1] == TP_SETUP_PRESET_SOURCE)
         c->saw_source = 1;
     else if (p[0] == TP_MSG_NAME && p[1] <= TP_EDIT_BUFFER) {   /* `03 idx mode name` */
@@ -288,6 +291,19 @@ static int read_names(tp_core_t *c)
     return tp_exchange(&c->dev, cmd, sizeof cmd, all_names, &s);
 }
 
+static int is_buffer_name(const uint8_t *p, void *ctx)   /* `03 80 mode name`: on_msg stores it */
+{
+    (void)ctx;
+    return p[0] == TP_MSG_NAME && p[1] == TP_EDIT_BUFFER;
+}
+
+/* `04 09 80`: the edit buffer's name alone. Loading a preset renames the buffer without a word (presets capture). */
+static int read_buffer_name(tp_core_t *c)
+{
+    const uint8_t cmd[] = {TP_MSG_QUERY, TP_QUERY_NAMES, TP_NAMES_EDIT_BUFFER};
+    return tp_exchange(&c->dev, cmd, sizeof cmd, is_buffer_name, NULL);
+}
+
 static int is_stored(const uint8_t *p, void *ctx)   /* `03 n mode name`, or `0c 03 n` (not if n was already loaded) */
 {
     int n = *(int *)ctx;
@@ -327,9 +343,9 @@ static void flash_done(tp_core_t *c, int ok)
     c->revision++;
 }
 
-/* device.py save: the buffer renamed if asked (and only stored once the unit said so), then `04 73 n` stores it. Whether
- * it took is checked by reading the names back (the stored one must be the buffer's), also when the unit didn't
- * answer in time. */
+/* device.py save: the buffer renamed if asked (its name read first, as the rename must be skipped when it has that name
+ * already; only stored once the unit said so), then `04 73 n` stores it. Whether it took is checked by reading the
+ * names back (the stored one must be the buffer's), also when the unit didn't answer in time. */
 static int send_store(tp_core_t *c, int n)
 {
     tp_dev_t *d = &c->dev;
@@ -338,7 +354,7 @@ static int send_store(tp_core_t *c, int n)
     pthread_mutex_lock(&c->lock);
     memcpy(name, c->store_name, sizeof name);
     pthread_mutex_unlock(&c->lock);
-    if (name[0] && (r = rename_buffer(c, name)) < 0)
+    if (name[0] && ((r = read_buffer_name(c)) < 0 || (r = rename_buffer(c, name)) < 0))
         lost = errno != ETIMEDOUT;
     if (!r) {
         const uint8_t cmd[] = {TP_MSG_QUERY, TP_QUERY_STORE, n};
@@ -503,11 +519,15 @@ static void *worker(void *arg)
         }
         pthread_mutex_unlock(&c->lock);
 
-        c->saw_edit = c->saw_source = 0;
+        c->saw_edit = c->saw_load = c->saw_source = 0;
         int r = have ? run_op(c, &op) : tp_exchange(&c->dev, &poll_cmd, 1, NULL, NULL);
         /* Back on the panel to an edit it kept ("A001*"): `0c 03 80` alone, so read the source. */
-        if (!r && c->saw_edit && !c->saw_source)
+        int kept = c->saw_edit && !c->saw_source;
+        if (!r && kept)
             r = tp_read_setup(&c->dev);
+        /* A preset or that kept edit loaded: the buffer has its name now, which the unit doesn't send. */
+        if (!r && (kept || c->saw_load))
+            r = read_buffer_name(c);
 
         pthread_mutex_lock(&c->lock);
         publish(c, have ? &op : NULL);
@@ -617,10 +637,11 @@ void tp_core_take_changes(tp_core_t *c, tp_changes_t *ch)
     pthread_mutex_unlock(&c->lock);
 }
 
-/* Under the lock. Another value for the same thing replaces the queued one, at the end. */
+/* Under the lock. Another value for the same thing replaces the queued one, at the end; but not one queued before a
+ * store or clear, which takes what was asked for before it. */
 static int enqueue(tp_core_t *c, int kind, int index, int value)
 {
-    for (int i = 0; i < c->nops; i++)
+    for (int i = c->nops - 1; i >= 0 && c->ops[i].kind != OP_STORE && c->ops[i].kind != OP_CLEAR; i--)
         if (c->ops[i].kind == kind && c->ops[i].index == index) {
             memmove(c->ops + i, c->ops + i + 1, (c->nops - i - 1) * sizeof *c->ops);
             c->nops--;

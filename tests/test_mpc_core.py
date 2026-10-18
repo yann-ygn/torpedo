@@ -316,6 +316,54 @@ def test_store_under_a_new_name_renames_the_buffer_first(ctl, bridge):
     bridge.fake.stores.clear()
 
 
+def test_a_load_reads_the_buffer_name(ctl, bridge):
+    """Loading a preset renames the edit buffer without a word, from here or the panel, and so does going back to
+    the kept edit: the name is read after each."""
+    def buffer_name() -> str:
+        return ctl.cmd("names")[-1].split(" ", 3)[3]
+    ctl.cmd("preset 1")
+    ctl.cmd("sync")
+    assert buffer_name() == PRESET_NAMES[1]
+    ctl.cmd("preset 0")
+    ctl.cmd("set ARCADE_CONTOUR 30")  # edit A001
+    ctl.settle()
+    with bridge.lock:
+        bridge.fake.panel_select(2)
+    ctl.wait_change("setup SETUP_PRESET 2")
+    assert buffer_name() == PRESET_NAMES[2]
+    with bridge.lock:
+        bridge.fake.panel_select_kept()  # back to "A001*"
+    ctl.wait_change(f"setup SETUP_PRESET {EDIT_BUFFER}")
+    assert buffer_name() == PRESET_NAMES[0]
+
+
+def test_a_store_after_a_load_renames_from_the_loaded_name(ctl, bridge):
+    """The rename is skipped when the buffer has that name already: the loaded preset's, not the one before."""
+    ctl.cmd("preset 1")
+    ctl.cmd(f"store 80 {PRESET_NAMES[0]}")  # A001's name: a rename
+    assert stored(ctl)["status"] == 1
+    ctl.cmd("preset 2")
+    ctl.cmd(f"store 81 {PRESET_NAMES[2]}")  # the name it has: none (the unit wouldn't answer)
+    assert stored(ctl)["status"] == 1
+    assert renames(bridge) == [PRESET_NAMES[0]]
+    assert bridge.fake.stores == [80, 81] and bridge.fake.names[80:82] == [PRESET_NAMES[0], PRESET_NAMES[2]]
+    bridge.fake.stores.clear()
+
+
+def test_a_rewrite_after_a_store_lands_after_it(ctl, bridge):
+    """What was queued when the store was asked for is stored, even if written again before the store's turn."""
+    with bridge.lock:  # the worker blocks on the first write, so the rest queue up behind it
+        ctl.cmd("set ARCADE_DISTANCE 3")
+        ctl.cmd("set ARCADE_CONTOUR 30")
+        ctl.cmd("store 80")
+        ctl.cmd("set ARCADE_CONTOUR 31")
+    assert stored(ctl)["status"] == 1
+    ctl.cmd("sync")
+    assert bridge.fake.presets[80][P["ARCADE_CONTOUR"]] == 30 and bridge.fake.params[P["ARCADE_CONTOUR"]] == 31
+    assert sent_params(bridge, "ARCADE_CONTOUR") == [30, 31]
+    bridge.fake.stores.clear()
+
+
 def test_clear_empties_another_preset(ctl, bridge):
     ctl.cmd("clear 3")
     assert stored(ctl) == {"storing": -1, "clearing": 0, "status": 1, "slot": 3, "cleared": 1, "seq": 1}

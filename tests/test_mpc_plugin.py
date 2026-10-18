@@ -422,6 +422,23 @@ def test_a_save_question_can_change_the_name(host, bridge):
     bridge.fake.stores.clear()
 
 
+def test_a_save_question_takes_the_loaded_presets_name(host, bridge):
+    """Loading a preset renames the edit buffer, which the unit doesn't send."""
+    press(host, "slot_2")
+    press(host, "p_saveas")
+    host.set("bank", 4)
+    host.settle()
+    press(host, "slot_12")
+    assert message(host) == ("SAVE INTO S076 (EMPTY)?", "AS BDELUXE 1 DYN421")
+    press(host, "p_name")
+    assert host.text("pname") == "BDELUXE 1 DYN421_"
+    press(host, "p_confirm")  # OK, the name as it was
+    press(host, "p_confirm")
+    wait_text(host, "pmsg", "SAVED A076")
+    assert bridge.fake.stores == [75] and bridge.fake.names[75] == "BDELUXE 1 DYN421"
+    bridge.fake.stores.clear()
+
+
 def test_the_keyboard_keeps_to_what_a_name_may_be(host, bridge):
     press(host, "p_rename")
     press(host, "k_clear")

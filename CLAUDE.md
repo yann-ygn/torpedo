@@ -79,9 +79,10 @@ reference implementation.
   (VST2 wrapper, int16 effect path: so a silent instrument used as a control surface, not
   a passthrough effect). `core/tp_core.c` (branch `mpc-core`): worker
   thread owning the device; ordered queue with one entry per parameter (a rewrite
-  replaces it and moves to the end); visible state = device + queued values, so
+  replaces it and moves to the end, but not past a queued store or clear); visible state = device + queued values, so
   late echoes don't move knobs; reports only device-made changes; reconnects and
-  re-reads everything on unplug. `ctl/ctl.c` drives it from stdin
+  re-reads everything on unplug; reads the edit buffer's name (`04 09 80`) after every load, as the unit
+  renames it silently. `ctl/ctl.c` drives it from stdin
   (tests/test_mpc_core.py, also usable on the MPC); `make -C mpc tsan` for threads.
 - MPC plugin proper (branch `mpc-plugin`): `mpc/plugin/` on mpc-vst-plugins' VST2 wrapper
   (submodule `mpc/mpc-vst-plugins`, pinned; `git submodule update --init`). Scope: the
