@@ -89,6 +89,7 @@ class Host:
         while self.text("view") != view:
             assert time.monotonic() < end, f"view is {self.text('view')}, not {view}"
             self.cmd("sleep 20")
+            self.cmd("run 40")  # the wrapper's poll: the engine reads the core's state then
 
     def close(self):
         self.p.stdin.write("quit\n")
@@ -151,6 +152,7 @@ def test_shows_the_unit(host):
 
 def test_write_reaches_the_unit_and_linked_values_come_back(host, bridge):
     host.set("arcade_contour", 30)
+    assert host.text("arcade_contour") == "75%"  # read back at once, as MPC does after a Q-Link event
     host.settle()
     assert bridge.fake.params[P["ARCADE_CONTOUR"]] == 30
     moved = {i for i, _ in host.automated}
@@ -525,8 +527,5 @@ def test_replug_reads_the_unit_again(host, bridge):
     other.setup[3] = other.setup[4] = 1
     other.params = list(other.presets[1])
     bridge.unplug(replace=other)
-    end = time.monotonic() + 5
-    while host.text("preset") != "A002 BDELUXE 1 DYN421":
-        assert time.monotonic() < end, host.text("preset")
-        host.cmd("sleep 20")
+    wait_text(host, "preset", "A002 BDELUXE 1 DYN421")
     assert host.text("arcade_contour") == "75%"

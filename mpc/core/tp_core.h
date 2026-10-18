@@ -2,16 +2,17 @@
  * its state, so the plugin's calls never wait on USB.
  *
  * - Changes are queued in order, one entry per parameter: writing a parameter again replaces its
- *   queued value and moves it to the end, so a Q-Link sweep sends a few values, not hundreds,
- *   and "mode, then a parameter of that mode" stays in that order.
+ *   queued value and moves it to the end (not past a queued store or clear, which takes what was
+ *   asked for before it), so a Q-Link sweep sends a few values, not hundreds, and "mode, then a
+ *   parameter of that mode" stays in that order.
  * - The state the plugin reads is the device's with the queued values on top, so the echo of an
  *   older value can't move a knob back while a newer one is on its way.
  * - Changes the device makes itself (front panel, linked parameters, preset loads, a refused
  *   write reverting) are collected for tp_core_take_changes; the plugin's own writes are not.
  * - When the device goes away (unplugged: ENODEV), the worker reopens it and reads everything
  *   again, since a replugged unit sends nothing on its own.
- * - The one thing that writes the unit's flash is tp_core_store, which the plugin only calls once the user has
- *   confirmed it on screen. Presets are otherwise edited, never stored. */
+ * - The only things that write the unit's flash are tp_core_store and tp_core_clear, which the plugin only calls
+ *   once the user has confirmed them on screen. Presets are otherwise edited, never stored. */
 #pragma once
 #include <stdint.h>
 
@@ -41,6 +42,8 @@ typedef struct {
     int store_slot;            /* ...which preset it was */
     int store_cleared;         /* ...and 1 if it was a clear */
     unsigned store_seq;        /* +1 whenever one ends */
+    unsigned revision;         /* +1 whenever changes are noted, for several readers (plugin instances) that each keep
+                                * the last one seen */
 } tp_state_t;
 
 enum { TP_CHANGED_CONNECTION = 1, TP_CHANGED_NAMES = 2, TP_CHANGED_CABS = 4, TP_CHANGED_IRS = 8 };
@@ -63,8 +66,6 @@ tp_core_t *tp_core_start(const tp_core_config_t *cfg);   /* NULL with errno if t
 void tp_core_stop(tp_core_t *c);
 void tp_core_state(tp_core_t *c, tp_state_t *s);
 void tp_core_take_changes(tp_core_t *c, tp_changes_t *ch);   /* and clear them */
-/* +1 whenever changes are noted, for several readers (plugin instances) that each keep the last one seen */
-unsigned tp_core_revision(tp_core_t *c);
 
 /* Queue a change: 0, or -1 with errno ENOTCONN, EINVAL (out of range or not writable), or EPERM
  * (not editable in arcade mode: the unit would drop it silently). */
@@ -86,6 +87,8 @@ int tp_core_store(tp_core_t *c, int n, const char *name);
  * the names, and the parameters if it was the current preset, are read back and tp_state_t says how it went. Shares
  * tp_core_store's one at a time (EBUSY); EPERM for the preset the sound comes from while it has unsaved edits. */
 int tp_core_clear(tp_core_t *c, int n);
+/* 1 if tp_core_clear would take preset n now (connected, not the one with unsaved edits) and it isn't empty already. */
+int tp_core_clearable(tp_core_t *c, int n);
 /* Wait until every queued change has been handled: 0, or -1 with errno ETIMEDOUT. */
 int tp_core_wait_idle(tp_core_t *c, int timeout_ms);
 

@@ -618,15 +618,8 @@ void tp_core_state(tp_core_t *c, tp_state_t *s)
     s->store_slot = c->store_slot;
     s->store_cleared = c->store_cleared;
     s->store_seq = c->store_seq;
+    s->revision = c->revision;
     pthread_mutex_unlock(&c->lock);
-}
-
-unsigned tp_core_revision(tp_core_t *c)
-{
-    pthread_mutex_lock(&c->lock);
-    unsigned r = c->revision;
-    pthread_mutex_unlock(&c->lock);
-    return r;
 }
 
 void tp_core_take_changes(tp_core_t *c, tp_changes_t *ch)
@@ -766,6 +759,11 @@ int tp_core_store(tp_core_t *c, int n, const char *name)
     return 0;
 }
 
+static int has_edits(const tp_core_t *c, int n)   /* preset n is the one the sound comes from, edited */
+{
+    return vis_setup(c, TP_S_SETUP_PRESET) == TP_EDIT_BUFFER && vis_setup(c, TP_S_SETUP_PRESET_SOURCE) == n;
+}
+
 int tp_core_clear(tp_core_t *c, int n)
 {
     pthread_mutex_lock(&c->lock);
@@ -775,7 +773,7 @@ int tp_core_clear(tp_core_t *c, int n)
         return fail(c, EINVAL);
     if (c->storing >= 0)
         return fail(c, EBUSY);
-    if (vis_setup(c, TP_S_SETUP_PRESET) == TP_EDIT_BUFFER && vis_setup(c, TP_S_SETUP_PRESET_SOURCE) == n)
+    if (has_edits(c, n))
         return fail(c, EPERM);   /* device.py refuses it too: what the unit does then wasn't seen */
     c->storing = n;
     c->clearing = 1;
@@ -783,6 +781,14 @@ int tp_core_clear(tp_core_t *c, int n)
     enqueue(c, OP_CLEAR, n, n);
     pthread_mutex_unlock(&c->lock);
     return 0;
+}
+
+int tp_core_clearable(tp_core_t *c, int n)
+{
+    pthread_mutex_lock(&c->lock);
+    int ok = c->connected && n >= 0 && n < TP_PRESETS && !has_edits(c, n) && strcmp(c->names[n].name, TP_EMPTY_PRESET);
+    pthread_mutex_unlock(&c->lock);
+    return ok;
 }
 
 int tp_core_wait_idle(tp_core_t *c, int timeout_ms)

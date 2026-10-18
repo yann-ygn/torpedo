@@ -3,7 +3,9 @@
  * fight over the device). Parameters are listed in params.json, generated with plugin_tables.c by
  * gen_plugin.py.
  *
- * - Values read are the core's (the device's with queued writes on top); writes are queued, never waited on.
+ * - Values read are the core's (the device's with queued writes on top); writes are queued, never waited on. They
+ *   come from one copy of its state per instance, taken on the wrapper's display_rev poll (every 100 ms) and around
+ *   each write (look()), rather than one per value read: the wrapper reads the tiles every 10 ms.
  * - "display_rev" is the core's revision plus this instance's own (the PRESET page's state), so the wrapper
  *   (HAS_DISPLAY_REV) reports what changed by itself (front panel, linked parameters, preset loads, the
  *   connection, a question timing out) and redraws texts and when= panels.
@@ -52,6 +54,7 @@ static int users;
 
 typedef struct {
     tp_core_t *core;
+    tp_state_t s;                 /* the core's, as last looked at (look()) */
     unsigned rev;                 /* +1 whenever the PRESET page's own state changes */
     int bank;                     /* the bank of presets the tiles show */
     int seen_source;              /* the preset the sound came from, last seen: the bank follows it */
@@ -72,6 +75,8 @@ static long long now_ms(void)
     clock_gettime(CLOCK_MONOTONIC, &t);
     return t.tv_sec * 1000LL + t.tv_nsec / 1000000;
 }
+
+static void look(inst_t *in);
 
 static void *create(const char *data_dir)
 {
@@ -94,6 +99,7 @@ static void *create(const char *data_dir)
         free(in);
         return NULL;
     }
+    look(in);
     return in;
 }
 
@@ -145,46 +151,30 @@ static char mode_letter(int mode)   /* what the unit's panel puts before a prese
     return mode == TP_ARCADE ? 'A' : mode == TP_IR ? 'I' : 'S';
 }
 
-typedef struct { char s[8]; } label_t;
+typedef struct { char label[8], name[TP_NAME_LEN]; } preset_t;
 
 /* Preset n as the unit's panel shows it: the letter of the mode it is stored in (the name list's byte), then its
- * number (A021 in simulation is S021). */
-static label_t label(inst_t *in, int n)
+ * number (A021 in simulation is S021); and its name. */
+static preset_t preset(inst_t *in, int n)
 {
-    label_t l;
+    preset_t p = {"", ""};
     int mode = 0;
-    tp_core_preset_name(in->core, n, NULL, 0, &mode);
-    snprintf(l.s, sizeof l.s, "%c%03d", mode_letter(mode), n + 1);
-    return l;
+    tp_core_preset_name(in->core, n, p.name, sizeof p.name, &mode);
+    snprintf(p.label, sizeof p.label, "%c%03d", mode_letter(mode), n + 1);
+    return p;
 }
 
 /* --- the PRESET page ------------------------------------------------------------------------------------------- */
 
-static void preset_name(inst_t *in, int n, char *buf, int len)
-{
-    buf[0] = 0;
-    tp_core_preset_name(in->core, n, buf, len, NULL);
-}
-
 static int is_empty(inst_t *in, int n)
 {
-    char name[TP_NAME_LEN];
-    preset_name(in, n, name, sizeof name);
-    return !strcmp(name, TP_EMPTY_PRESET);
-}
-
-static int clearable(inst_t *in, const tp_state_t *s, int n)   /* not empty yet, nor the edits' preset (tp_core_clear) */
-{
-    return !is_empty(in, n) && !(edited(s) && n == source_preset(s));
+    return !strcmp(preset(in, n).name, TP_EMPTY_PRESET);
 }
 
 /* The name a save question stores under: the one typed, else the edit buffer's own. */
 static void save_name(inst_t *in, char *buf, int len)
 {
-    if (in->save_name[0])
-        snprintf(buf, len, "%s", in->save_name);
-    else
-        preset_name(in, TP_EDIT_BUFFER, buf, len);
+    snprintf(buf, len, "%s", in->save_name[0] ? in->save_name : preset(in, TP_EDIT_BUFFER).name);
 }
 
 static void set_ask(inst_t *in, int ask)
@@ -228,20 +218,20 @@ static void tick(inst_t *in, const tp_state_t *s)
     if (in->seen_store == UINT_MAX)
         in->seen_store = s->store_seq;   /* earlier stores (another instance's, before this one) aren't news */
     else if (s->store_seq != in->seen_store) {
-        char name[TP_NAME_LEN], line[80];
+        char line[80];
+        preset_t p = preset(in, s->store_slot);
         in->seen_store = s->store_seq;
-        preset_name(in, s->store_slot, name, sizeof name);
         if (s->store_cleared && s->store_status == TP_STORE_OK) {
-            snprintf(line, sizeof line, "CLEARED %s", label(in, s->store_slot).s);
+            snprintf(line, sizeof line, "CLEARED %s", p.label);
             notice(in, line, "NOW AN EMPTY USER SLOT");
         } else if (s->store_cleared) {
-            snprintf(line, sizeof line, "%s: CLEAR NOT CONFIRMED", label(in, s->store_slot).s);
+            snprintf(line, sizeof line, "%s: CLEAR NOT CONFIRMED", p.label);
             notice(in, line, "CHECK THE PRESET ON THE UNIT");
         } else if (s->store_status == TP_STORE_OK) {
-            snprintf(line, sizeof line, "SAVED %s", label(in, s->store_slot).s);
-            notice(in, line, name);
+            snprintf(line, sizeof line, "SAVED %s", p.label);
+            notice(in, line, p.name);
         } else {
-            snprintf(line, sizeof line, "%s: SAVE NOT CONFIRMED", label(in, s->store_slot).s);
+            snprintf(line, sizeof line, "%s: SAVE NOT CONFIRMED", p.label);
             notice(in, line, "CHECK THE PRESET ON THE UNIT");
         }
         in->rev++;
@@ -261,6 +251,13 @@ static void tick(inst_t *in, const tp_state_t *s)
             in->rev++;
         }
     }
+}
+
+/* Take the core's state for what is read or done next, and see what happened meanwhile. */
+static void look(inst_t *in)
+{
+    tp_core_state(in->core, &in->s);
+    tick(in, &in->s);
 }
 
 static int pui(const inst_t *in, const tp_state_t *s)
@@ -287,7 +284,7 @@ static int tile_on(inst_t *in, const tp_state_t *s, int tile)
     case PUI_CLEAN:
     case PUI_EDITED: return n == source_preset(s);
     case PUI_PICK:   /* where the sound can go without replacing anything, or what can be cleared */
-        return in->ask == ASK_PICK_CLEAR ? clearable(in, s, n) : is_empty(in, n);
+        return in->ask == ASK_PICK_CLEAR ? tp_core_clearable(in->core, n) : is_empty(in, n);
     case PUI_SAVING: return n == s->storing;
     default: return n == in->target;         /* the preset the question is about */
     }
@@ -295,12 +292,10 @@ static int tile_on(inst_t *in, const tp_state_t *s, int tile)
 
 static int tile_text(inst_t *in, const tp_state_t *s, int tile, char *buf, int len)
 {
-    char name[TP_NAME_LEN];
-    int n = in->bank * BANK_SIZE + tile;
     if (!s->connected)
         return snprintf(buf, len, "-");
-    preset_name(in, n, name, sizeof name);
-    return snprintf(buf, len, "%s %s", label(in, n).s, name);
+    preset_t p = preset(in, in->bank * BANK_SIZE + tile);
+    return snprintf(buf, len, "%s %s", p.label, p.name);
 }
 
 /* Line 0 and 1: the page's two message lines; line 2: the name being typed, with its cursor. */
@@ -312,7 +307,7 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         snprintf(l[0], sizeof l[0], "TORPEDO NOT CONNECTED");
     else switch (p) {
     case PUI_SAVING:
-        snprintf(l[0], sizeof l[0], "%s %s...", s->clearing ? "CLEARING" : "SAVING", label(in, s->storing).s);
+        snprintf(l[0], sizeof l[0], "%s %s...", s->clearing ? "CLEARING" : "SAVING", preset(in, s->storing).label);
         snprintf(l[1], sizeof l[1], "KEEP THE TORPEDO PLUGGED IN");
         break;
     case PUI_PICK:
@@ -325,7 +320,7 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         snprintf(l[1], sizeof l[1], "TAP IT (THE LIT ONES ARE EMPTY)");
         break;
     case PUI_NAMING:
-        snprintf(l[0], sizeof l[0], "NAME FOR %s", label(in, in->target).s);
+        snprintf(l[0], sizeof l[0], "NAME FOR %s", preset(in, in->target).label);
         snprintf(l[1], sizeof l[1], "%s", strlen(in->name) < TP_NAME_MAX ? "UP TO 25 LETTERS, DIGITS, SPACES"
                                                                           : "25 CHARACTERS: AS LONG AS IT GETS");
         snprintf(l[2], sizeof l[2], "%s%s", in->name, strlen(in->name) < TP_NAME_MAX ? "_" : "");
@@ -333,38 +328,38 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
     case PUI_ASKSAVE:
         save_name(in, name, sizeof name);
         if (in->ask == ASK_RENAME) {
-            snprintf(l[0], sizeof l[0], "RENAME %s?", label(in, in->target).s);
+            snprintf(l[0], sizeof l[0], "RENAME %s?", preset(in, in->target).label);
             snprintf(l[1], sizeof l[1], "TO %s", name);
             break;
         }
         snprintf(l[1], sizeof l[1], "AS %s", name);
         if (in->target == src && edited(s))
-            snprintf(l[0], sizeof l[0], "SAVE THE EDITS INTO %s?", label(in, in->target).s);
+            snprintf(l[0], sizeof l[0], "SAVE THE EDITS INTO %s?", preset(in, in->target).label);
         else if (is_empty(in, in->target))
-            snprintf(l[0], sizeof l[0], "SAVE INTO %s (EMPTY)?", label(in, in->target).s);
+            snprintf(l[0], sizeof l[0], "SAVE INTO %s (EMPTY)?", preset(in, in->target).label);
         else {
-            preset_name(in, in->target, name, sizeof name);
-            snprintf(l[0], sizeof l[0], "REPLACE %s %s?", label(in, in->target).s, name);
+            preset_t t = preset(in, in->target);
+            snprintf(l[0], sizeof l[0], "REPLACE %s %s?", t.label, t.name);
         }
         break;
     case PUI_CONFIRM:
         if (in->ask == ASK_CLEAR) {
-            preset_name(in, in->target, name, sizeof name);
-            snprintf(l[0], sizeof l[0], "CLEAR %s %s?", label(in, in->target).s, name);
+            preset_t t = preset(in, in->target);
+            snprintf(l[0], sizeof l[0], "CLEAR %s %s?", t.label, t.name);
             snprintf(l[1], sizeof l[1], "IT BECOMES AN EMPTY USER SLOT");
         } else if (in->ask == ASK_LOAD) {
-            snprintf(l[0], sizeof l[0], "LOAD %s?", label(in, in->target).s);
-            snprintf(l[1], sizeof l[1], "THE EDITS TO %s ARE DROPPED", label(in, src).s);
+            snprintf(l[0], sizeof l[0], "LOAD %s?", preset(in, in->target).label);
+            snprintf(l[1], sizeof l[1], "THE EDITS TO %s ARE DROPPED", preset(in, src).label);
         } else {
             snprintf(l[0], sizeof l[0], "DISCARD THE EDITS?");
-            snprintf(l[1], sizeof l[1], "%s RELOADS AS STORED", label(in, src).s);
+            snprintf(l[1], sizeof l[1], "%s RELOADS AS STORED", preset(in, src).label);
         }
         break;
     default:
         if (now_ms() < in->notice_until)
             memcpy(l, in->notice, sizeof in->notice);
         else if (edited(s)) {
-            snprintf(l[0], sizeof l[0], "%s HAS UNSAVED EDITS", label(in, src).s);
+            snprintf(l[0], sizeof l[0], "%s HAS UNSAVED EDITS", preset(in, src).label);
             snprintf(l[1], sizeof l[1], "SAVE, SAVE AS OR DISCARD THEM");
         } else {
             snprintf(l[0], sizeof l[0], "TAP A PRESET TO LOAD IT");
@@ -384,7 +379,7 @@ static void tap(inst_t *in, const tp_state_t *s, int n)
         return;
     }
     if (in->ask == ASK_PICK_CLEAR) {
-        if (clearable(in, s, n))
+        if (tp_core_clearable(in->core, n))
             ask(in, s, ASK_CLEAR, n);
         return;
     }
@@ -445,8 +440,7 @@ static void act(inst_t *in, const tp_state_t *s, int action)
         if (in->ask == ASK_NONE && !edited(s)) {
             in->save_name[0] = 0;
             in->target = src;
-            preset_name(in, src, name, sizeof name);
-            ask_name(in, s, ASK_RENAME, name);
+            ask_name(in, s, ASK_RENAME, preset(in, src).name);
         }
         break;
     case ACT_NAME:
@@ -512,9 +506,8 @@ static int text(inst_t *in, const pp_param_t *pp, const tp_state_t *s, char *buf
     char name[TP_NAME_LEN] = "";
     if (pp->kind == PP_PRESET) {   /* the sound's own mode: an edit switched to IR is I..., unsaved */
         int n = source_preset(s);
-        tp_core_preset_name(in->core, n, name, sizeof name, NULL);
         return snprintf(buf, len, "%c%03d%s %s", mode_letter(s->params[TP_P_PRESET_MODE]), n + 1,
-                        edited(s) ? "*" : "", name);
+                        edited(s) ? "*" : "", preset(in, n).name);
     }
     if (pp->eq_custom && s->params[TP_P_EQ_MODE] != EQ_CUSTOM) {
         int mode = s->params[TP_P_EQ_MODE] == 1;
@@ -539,35 +532,32 @@ static int text(inst_t *in, const pp_param_t *pp, const tp_state_t *s, char *buf
 static int get_param(void *p, const char *key, char *buf, int len)
 {
     inst_t *in = p;
-    tp_state_t s;
+    const tp_state_t *s = &in->s;
     size_t n = strlen(key);
-    if (!strcmp(key, "display_rev")) {
-        tp_core_state(in->core, &s);
-        tick(in, &s);
-        return snprintf(buf, len, "%u.%u", tp_core_revision(in->core), in->rev);
+    if (!strcmp(key, "display_rev")) {   /* the wrapper's poll: what everything else is read from until the next */
+        look(in);
+        return snprintf(buf, len, "%u.%u", s->revision, in->rev);
     }
     const char *colon = strchr(key, ':');
     if (colon && find(key, colon - key) && find(key, colon - key)->kind == PP_PRESET) {   /* "preset:<n>": its name */
-        char name[TP_NAME_LEN] = "";
         int k = atoi(colon + 1);
-        if (k < 1 || k > TP_PRESETS || tp_core_preset_name(in->core, k - 1, name, sizeof name, NULL) || !name[0])
+        if (k < 1 || k > TP_PRESETS)
             return 0;
-        return snprintf(buf, len, "%s %s", label(in, k - 1).s, name);
+        preset_t pr = preset(in, k - 1);
+        return pr.name[0] ? snprintf(buf, len, "%s %s", pr.label, pr.name) : 0;
     }
     int display = n > 8 && !strcmp(key + n - 8, "_display");
     int on = n > 3 && !strcmp(key + n - 3, "_on");   /* a list tile: lit or not */
     const pp_param_t *pp = find(key, display ? n - 8 : on ? n - 3 : n);
     if (!pp || pp->kind == PP_TRIGGER || pp->kind == PP_ACTION || pp->kind == PP_KEY || (on && pp->kind != PP_SLOT))
         return 0;   /* "state" included: nothing to save */
-    tp_core_state(in->core, &s);
-    tick(in, &s);
     if (pp->kind == PP_SLOT)
-        return on ? snprintf(buf, len, "%d", tile_on(in, &s, pp->index)) : tile_text(in, &s, pp->index, buf, len);
+        return on ? snprintf(buf, len, "%d", tile_on(in, s, pp->index)) : tile_text(in, s, pp->index, buf, len);
     if (pp->kind == PP_MSG)
-        return message(in, &s, pp->index, buf, len);
+        return message(in, s, pp->index, buf, len);
     if (display)
-        return text(in, pp, &s, buf, len);
-    return snprintf(buf, len, "%d", value(in, pp, &s));
+        return text(in, pp, s, buf, len);
+    return snprintf(buf, len, "%d", value(in, pp, s));
 }
 
 static int clamp(int v, int hi)
@@ -579,18 +569,18 @@ static void set_param(void *p, const char *key, const char *val)
 {
     inst_t *in = p;
     const pp_param_t *pp = find(key, strlen(key));
-    tp_state_t s;
+    const tp_state_t *s = &in->s;
     int v = atoi(val), mode;
     if (!pp)
         return;
+    look(in);   /* decide on what the unit has now */
     switch (pp->kind) {   /* refused writes (another mode's, not connected) leave the value as it was */
     case PP_PRESET: tp_core_select_preset(in->core, v - 1); break;
     case PP_SETUP: tp_core_set_setup(in->core, pp->index, v); break;
     case PP_PARAM:
-        tp_core_state(in->core, &s);
-        mode = s.params[TP_P_PRESET_MODE];
+        mode = s->params[TP_P_PRESET_MODE];
         if (mode < 0 || mode > TP_IR || !(pp->modes & 1 << mode)
-            || (pp->eq_custom && s.params[TP_P_EQ_MODE] != EQ_CUSTOM))
+            || (pp->eq_custom && s->params[TP_P_EQ_MODE] != EQ_CUSTOM))
             break;
         if (pp->list == PP_LIST_CAB)
             tp_core_select_cab(in->core, clamp(v, tp_core_cab_count(in->core) - 1));
@@ -598,15 +588,13 @@ static void set_param(void *p, const char *key, const char *val)
             tp_core_select_ir(in->core, pp->index == TP_P_SIMUHP_WAVE1, clamp(v, tp_core_ir_count(in->core) - 1));
         else if (pp->list == PP_LIST_MIC) {
             tp_cab_t cab;
-            if (v >= 0 && v < 8 && !tp_core_cab(in->core, s.params[TP_P_SIMUHP_SPEAKER], &cab) && cab.mics[v][0])
+            if (v >= 0 && v < 8 && !tp_core_cab(in->core, s->params[TP_P_SIMUHP_SPEAKER], &cab) && cab.mics[v][0])
                 tp_core_set_param(in->core, pp->index, v);   /* not an empty mic slot */
         } else
             tp_core_set_param(in->core, pp->index, v);
         break;
     case PP_SLOT:   /* a tap: "1", or "0" on a lit tile (the wrapper drops the echoes of what it pushed itself) */
-        tp_core_state(in->core, &s);
-        tick(in, &s);
-        tap(in, &s, in->bank * BANK_SIZE + pp->index);
+        tap(in, s, in->bank * BANK_SIZE + pp->index);
         break;
     case PP_BANK:
         if (v >= 0 && v < TP_PRESETS / BANK_SIZE && v != in->bank) {
@@ -617,15 +605,14 @@ static void set_param(void *p, const char *key, const char *val)
     case PP_ACTION:
     case PP_KEY:
         if (v) {   /* not the trigger falling back to 0 */
-            tp_core_state(in->core, &s);
-            tick(in, &s);
             if (pp->kind == PP_KEY)
                 type(in, pp->index);
             else
-                act(in, &s, pp->index);
+                act(in, s, pp->index);
         }
         break;
     }
+    look(in);   /* with the write queued: the host reads the value back at once */
 }
 
 const mpc_engine_t *mpc_engine(void)
