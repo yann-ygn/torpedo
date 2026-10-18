@@ -145,7 +145,7 @@ def test_shows_the_unit(host):
     assert host.text("simuamp_modele") == "PP EL34"
     assert host.text("arcade_poweramp") == "off"
     programs = host.cmd("programs")
-    assert programs[0] == "program 0 A001 BDELUXE 1 RBN" and programs[127] == "program 127 A128 USER"
+    assert programs[0] == "program 0 A001 BDELUXE 1 RBN" and programs[127] == "program 127 S128 USER"  # empty: simulation
     assert programs[-1] == "current 0"
 
 
@@ -244,7 +244,7 @@ def test_tiles_show_a_bank_and_follow_the_preset(host, bridge):
     assert host.text("slot_4") == f"A020 {PRESET_NAMES[19]}" and host.get("slot_4")[0] == 1
     host.set("bank", 4)  # browsing loads nothing
     host.settle()
-    assert host.text("slot_12") == "A076 USER" and bridge.fake.setup[3] == 19
+    assert host.text("slot_12") == "S076 USER" and bridge.fake.setup[3] == 19
 
 
 def test_a_tap_loads_a_preset(host, bridge):
@@ -292,7 +292,7 @@ def test_save_as_lights_the_empty_presets_and_stores_into_the_one_tapped(host, b
     host.settle()
     assert [host.get(f"slot_{n}")[0] for n in (11, 12)] == [0, 1]  # A075 holds a preset, A076 is empty
     press(host, "slot_12")
-    assert message(host) == ("SAVE INTO A076 (EMPTY)?", "AS BDELUXE 1 RBN")
+    assert message(host) == ("SAVE INTO S076 (EMPTY)?", "AS BDELUXE 1 RBN")
     assert not bridge.fake.stores
     press(host, "p_confirm")
     wait_text(host, "pmsg", "SAVED A076")
@@ -369,11 +369,11 @@ def test_a_save_question_can_change_the_name(host, bridge):
     assert host.text("pname") == "BDELUXE 1 RBN_"  # the name it would have been saved under
     type_name(host, " 2")
     press(host, "p_confirm")  # OK: back to the question
-    assert message(host) == ("SAVE INTO A076 (EMPTY)?", "AS BDELUXE 1 RBN 2")
+    assert message(host) == ("SAVE INTO S076 (EMPTY)?", "AS BDELUXE 1 RBN 2")
     press(host, "p_name")
     type_name(host, "X")
     press(host, "p_cancel")  # back to the question, with the name it had
-    assert message(host) == ("SAVE INTO A076 (EMPTY)?", "AS BDELUXE 1 RBN 2")
+    assert message(host) == ("SAVE INTO S076 (EMPTY)?", "AS BDELUXE 1 RBN 2")
     press(host, "p_confirm")
     wait_text(host, "pmsg", "SAVED A076")
     assert bridge.fake.stores == [75] and bridge.fake.names[75] == "BDELUXE 1 RBN 2"
@@ -439,6 +439,8 @@ def test_mode_pages_and_ir_names(host, bridge):
     host.set("preset_mode", 2)
     host.settle()
     host.wait_view("IR")
+    assert host.text("preset") == "I001* BDELUXE 1 RBN"  # the sound's mode; the tile keeps the stored one
+    assert host.text("slot_1") == "A001 BDELUXE 1 RBN"
     assert host.text("simuhp_wave0") == "ML-FRMN-00"
     host.set("simuhp_wave1", 85)
     host.settle()

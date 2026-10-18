@@ -137,6 +137,25 @@ static int edited(const tp_state_t *s)
     return s->setup[TP_S_SETUP_PRESET] == TP_EDIT_BUFFER;
 }
 
+static char mode_letter(int mode)   /* what the unit's panel puts before a preset's number */
+{
+    return mode == TP_ARCADE ? 'A' : mode == TP_IR ? 'I' : 'S';
+}
+
+typedef struct { char s[8]; } label_t;
+
+/* Preset n as the unit's panel shows it: the letter of the mode it is stored in, then its number (A021 in
+ * simulation is S021). The mode is the name list's byte: 1 for arcade; 2 for IR (?), if it is PRESET_MODE as it
+ * looks, but no IR preset has been seen yet. */
+static label_t label(inst_t *in, int n)
+{
+    label_t l;
+    int mode = 0;
+    tp_core_preset_name(in->core, n, NULL, 0, &mode);
+    snprintf(l.s, sizeof l.s, "%c%03d", mode_letter(mode), n + 1);
+    return l;
+}
+
 /* --- the PRESET page ------------------------------------------------------------------------------------------- */
 
 static void preset_name(inst_t *in, int n, char *buf, int len)
@@ -206,10 +225,10 @@ static void tick(inst_t *in, const tp_state_t *s)
         in->seen_store = s->store_seq;
         preset_name(in, s->store_slot, name, sizeof name);
         if (s->store_status == TP_STORE_OK) {
-            snprintf(line, sizeof line, "SAVED A%03d", s->store_slot + 1);
+            snprintf(line, sizeof line, "SAVED %s", label(in, s->store_slot).s);
             notice(in, line, name);
         } else {
-            snprintf(line, sizeof line, "A%03d: SAVE NOT CONFIRMED", s->store_slot + 1);
+            snprintf(line, sizeof line, "%s: SAVE NOT CONFIRMED", label(in, s->store_slot).s);
             notice(in, line, "CHECK THE PRESET ON THE UNIT");
         }
         in->rev++;
@@ -266,7 +285,7 @@ static int tile_text(inst_t *in, const tp_state_t *s, int tile, char *buf, int l
     if (!s->connected)
         return snprintf(buf, len, "-");
     preset_name(in, n, name, sizeof name);
-    return snprintf(buf, len, "A%03d %s", n + 1, name);
+    return snprintf(buf, len, "%s %s", label(in, n).s, name);
 }
 
 /* Line 0 and 1: the page's two message lines; line 2: the name being typed, with its cursor. */
@@ -278,7 +297,7 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         snprintf(l[0], sizeof l[0], "TORPEDO NOT CONNECTED");
     else switch (p) {
     case PUI_SAVING:
-        snprintf(l[0], sizeof l[0], "SAVING A%03d...", s->storing + 1);
+        snprintf(l[0], sizeof l[0], "SAVING %s...", label(in, s->storing).s);
         snprintf(l[1], sizeof l[1], "KEEP THE TORPEDO PLUGGED IN");
         break;
     case PUI_PICK:
@@ -286,7 +305,7 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         snprintf(l[1], sizeof l[1], "TAP IT (THE LIT ONES ARE EMPTY)");
         break;
     case PUI_NAMING:
-        snprintf(l[0], sizeof l[0], "NAME FOR A%03d", in->target + 1);
+        snprintf(l[0], sizeof l[0], "NAME FOR %s", label(in, in->target).s);
         snprintf(l[1], sizeof l[1], "%s", strlen(in->name) < TP_NAME_MAX ? "UP TO 25 LETTERS, DIGITS, SPACES"
                                                                           : "25 CHARACTERS: AS LONG AS IT GETS");
         snprintf(l[2], sizeof l[2], "%s%s", in->name, strlen(in->name) < TP_NAME_MAX ? "_" : "");
@@ -294,34 +313,34 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
     case PUI_ASKSAVE:
         save_name(in, name, sizeof name);
         if (in->ask == ASK_RENAME) {
-            snprintf(l[0], sizeof l[0], "RENAME A%03d?", in->target + 1);
+            snprintf(l[0], sizeof l[0], "RENAME %s?", label(in, in->target).s);
             snprintf(l[1], sizeof l[1], "TO %s", name);
             break;
         }
         snprintf(l[1], sizeof l[1], "AS %s", name);
         if (in->target == src && edited(s))
-            snprintf(l[0], sizeof l[0], "SAVE THE EDITS INTO A%03d?", in->target + 1);
+            snprintf(l[0], sizeof l[0], "SAVE THE EDITS INTO %s?", label(in, in->target).s);
         else if (is_empty(in, in->target))
-            snprintf(l[0], sizeof l[0], "SAVE INTO A%03d (EMPTY)?", in->target + 1);
+            snprintf(l[0], sizeof l[0], "SAVE INTO %s (EMPTY)?", label(in, in->target).s);
         else {
             preset_name(in, in->target, name, sizeof name);
-            snprintf(l[0], sizeof l[0], "REPLACE A%03d %s?", in->target + 1, name);
+            snprintf(l[0], sizeof l[0], "REPLACE %s %s?", label(in, in->target).s, name);
         }
         break;
     case PUI_CONFIRM:
         if (in->ask == ASK_LOAD) {
-            snprintf(l[0], sizeof l[0], "LOAD A%03d?", in->target + 1);
-            snprintf(l[1], sizeof l[1], "THE EDITS TO A%03d ARE DROPPED", src + 1);
+            snprintf(l[0], sizeof l[0], "LOAD %s?", label(in, in->target).s);
+            snprintf(l[1], sizeof l[1], "THE EDITS TO %s ARE DROPPED", label(in, src).s);
         } else {
             snprintf(l[0], sizeof l[0], "DISCARD THE EDITS?");
-            snprintf(l[1], sizeof l[1], "A%03d RELOADS AS STORED", src + 1);
+            snprintf(l[1], sizeof l[1], "%s RELOADS AS STORED", label(in, src).s);
         }
         break;
     default:
         if (now_ms() < in->notice_until)
             memcpy(l, in->notice, sizeof in->notice);
         else if (edited(s)) {
-            snprintf(l[0], sizeof l[0], "A%03d HAS UNSAVED EDITS", src + 1);
+            snprintf(l[0], sizeof l[0], "%s HAS UNSAVED EDITS", label(in, src).s);
             snprintf(l[1], sizeof l[1], "SAVE, SAVE AS OR DISCARD THEM");
         } else {
             snprintf(l[0], sizeof l[0], "TAP A PRESET TO LOAD IT");
@@ -452,10 +471,11 @@ static int text(inst_t *in, const pp_param_t *pp, const tp_state_t *s, char *buf
 {
     int v = value(in, pp, s);
     char name[TP_NAME_LEN] = "";
-    if (pp->kind == PP_PRESET) {
+    if (pp->kind == PP_PRESET) {   /* the sound's own mode: an edit switched to IR is I..., unsaved */
         int n = source_preset(s);
         tp_core_preset_name(in->core, n, name, sizeof name, NULL);
-        return snprintf(buf, len, "A%03d%s %s", n + 1, edited(s) ? "*" : "", name);
+        return snprintf(buf, len, "%c%03d%s %s", mode_letter(s->params[TP_P_PRESET_MODE]), n + 1,
+                        edited(s) ? "*" : "", name);
     }
     if (pp->eq_custom && s->params[TP_P_EQ_MODE] != 2) {
         int mode = s->params[TP_P_EQ_MODE] == 1;
@@ -493,7 +513,7 @@ static int get_param(void *p, const char *key, char *buf, int len)
         int k = atoi(colon + 1);
         if (k < 1 || k > TP_PRESETS || tp_core_preset_name(in->core, k - 1, name, sizeof name, NULL) || !name[0])
             return 0;
-        return snprintf(buf, len, "A%03d %s", k, name);
+        return snprintf(buf, len, "%s %s", label(in, k - 1).s, name);
     }
     int display = n > 8 && !strcmp(key + n - 8, "_display");
     int on = n > 3 && !strcmp(key + n - 3, "_on");   /* a list tile: lit or not */

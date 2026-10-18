@@ -103,8 +103,8 @@ reference implementation.
   takes itself, cab, mic A, room, output, stays live); other tabs show a placeholder. The engine
   drops writes to what the preset's mode doesn't show (`modes` in plugin_tables, from layout.py's
   LAYOUTS), so a Q-Link left on a hidden control edits nothing. Switching mode recomputes nothing
-  (PROTOCOL.md); what Remote sends on a switch is uncaptured, so the plugin only writes
-  PRESET_MODE. Not yet checked on the Key 37. EQ: guitar/bass bands
+  (PROTOCOL.md), and Remote only writes PRESET_MODE too (`01 22 0x` in the -irs and -presets
+  captures, then `04 09 80` for the name's mode byte): so does the plugin. EQ: guitar/bass bands
   (5 gains), custom ignored. Choosers are readout + arrow buttons drawn from `images/*.svg`
   (the browser renderer has no sized plain buttons). The skin is drawn by the browser
   renderer (`"art": "html"`) on the system Chromium through `plugin/html_art_local` (no Docker).
@@ -123,7 +123,9 @@ reference implementation.
   CONFIRM/CANCEL question (`engine.c` state machine; the `pui` param drives the buttons'
   `when=`), dropped after 20 s or when the unit changes under it. SAVE AS lights the empty
   ("USER") slots. A save is `tp_core_store` (`04 73 n`, after the queued writes, names re-read
-  to check it): the only flash write the C side exports. Checked on the Key 37.
+  to check it): the only flash write the C side exports. Checked on the Key 37. Presets read like
+  the unit's panel, mode letter then number (S021): a slot's from the name list's mode byte (IR = 2
+  assumed), the header's from the sound's PRESET_MODE. Mute toggles are red when on.
   **Names (2026-10-18):** MPC has no text entry a VST2 skin can call (only "menu overlay", empty
   for VST2), so the PRESET tab has its own keyboard (A–Z, 0–9, space, DEL, CLEAR: `k_*`
   triggers; `pkb` swaps it for the tiles). A save question has NAME... (OK goes back to the
