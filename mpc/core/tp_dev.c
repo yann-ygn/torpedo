@@ -116,7 +116,7 @@ struct read_all {
 static int all_seen(const uint8_t *p, void *ctx)
 {
     struct read_all *r = ctx;
-    if (p[0] == r->type && !(r->mask[p[1] / 8] & 1 << p[1] % 8)) {
+    if (p[0] == r->type && p[1] < r->count && !(r->mask[p[1] / 8] & 1 << p[1] % 8)) {
         r->mask[p[1] / 8] |= 1 << p[1] % 8;
         r->seen++;
     }

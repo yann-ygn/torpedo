@@ -416,7 +416,7 @@ static void type(inst_t *in, int key)
 static void act(inst_t *in, const tp_state_t *s, int action)
 {
     char name[TP_NAME_LEN];
-    int src = source_preset(s);
+    int src = source_preset(s), r;
     size_t n;
     if (!s->connected || s->storing >= 0)
         return;
@@ -472,13 +472,15 @@ static void act(inst_t *in, const tp_state_t *s, int action)
             ask(in, s, in->back, in->target);
             return;
         case ASK_SAVE:
-        case ASK_RENAME: tp_core_store(in->core, in->target, in->save_name); break;
-        case ASK_CLEAR: tp_core_clear(in->core, in->target); break;
+        case ASK_RENAME: r = tp_core_store(in->core, in->target, in->save_name); break;
+        case ASK_CLEAR: r = tp_core_clear(in->core, in->target); break;
         case ASK_LOAD:
-        case ASK_DISCARD: tp_core_select_preset(in->core, in->target); break;
+        case ASK_DISCARD: r = tp_core_select_preset(in->core, in->target); break;
         default: return;
         }
         set_ask(in, ASK_NONE);
+        if (r < 0)   /* refused, nothing sent: the unit changed since tick() looked (another instance's save, unplugged) */
+            notice(in, "CANCELLED", "THE UNIT CHANGED MEANWHILE");
         break;
     }
 }

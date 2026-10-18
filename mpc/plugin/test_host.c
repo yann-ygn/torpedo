@@ -67,9 +67,13 @@ int main(void)
         AEffect *e = fx[n - 1];
         if (!strcmp(cmd, "quit"))
             break;
-        else if (!strcmp(cmd, "open") && n < 8)
-            fx[n++] = VSTPluginMain(host);
-        else if (!strcmp(cmd, "close") && n > 1) {
+        else if (!strcmp(cmd, "open") && n < 8) {
+            if (!(fx[n] = VSTPluginMain(host))) {
+                puts("error no plugin");
+                continue;
+            }
+            n++;
+        } else if (!strcmp(cmd, "close") && n > 1) {
             n--;
             fx[n]->dispatcher(fx[n], effClose, 0, 0, NULL, 0);
         }
