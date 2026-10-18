@@ -3,6 +3,7 @@
 
 import queue
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -261,6 +262,65 @@ def test_ir_select(ctl, bridge):
         ctl.cmd("ir 0 86")  # the bank has 86 IRs
 
 
+def stored(ctl, timeout: float = 10) -> dict[str, int]:
+    """Wait for the store in progress to end: the `storing` line as a dict."""
+    end = time.monotonic() + timeout
+    while True:
+        w = ctl.cmd("storing")[0].split()
+        state = {w[i]: int(w[i + 1]) for i in range(0, len(w), 2)}
+        if state["storing"] < 0:
+            return state
+        assert time.monotonic() < end, "the store never ended"
+        time.sleep(0.01)
+
+
+def test_store_writes_the_edit_into_a_slot(ctl, bridge):
+    ctl.cmd("set ARCADE_CONTOUR 30")  # edit A001
+    ctl.settle()
+    ctl.cmd("store 80")
+    assert stored(ctl) == {"storing": -1, "status": 1, "slot": 80, "seq": 1}
+    assert bridge.fake.stores == [80]
+    assert bridge.fake.presets[80][P["ARCADE_CONTOUR"]] == 30
+    assert ctl.cmd("names")[80] == f"name 80 1 {PRESET_NAMES[0]}"  # the buffer's name; the names were read back
+    assert ctl.state()[1]["SETUP_PRESET"] == ctl.state()[1]["SETUP_PRESET_SOURCE"] == 80
+    ctl.wait_change("names")
+    bridge.fake.stores.clear()  # the fixture insists that nothing else writes flash
+
+
+def test_store_is_one_at_a_time_and_after_what_was_queued(ctl, bridge):
+    with bridge.lock:  # the unit isn't answering yet
+        ctl.cmd("set ARCADE_CONTOUR 30")
+        ctl.cmd("store 80")
+        with pytest.raises(CtlError, match="busy"):
+            ctl.cmd("store 81")
+        assert ctl.cmd("storing")[0].startswith("storing 80 ")
+    assert stored(ctl)["status"] == 1
+    assert bridge.fake.stores == [80]
+    assert bridge.fake.presets[80][P["ARCADE_CONTOUR"]] == 30  # the edit queued before it was stored with it
+    bridge.fake.stores.clear()
+
+
+def test_store_refused_up_front(ctl, bridge):
+    with pytest.raises(CtlError, match="Invalid argument"):
+        ctl.cmd("store 128")
+    with pytest.raises(CtlError, match="Invalid argument"):
+        ctl.cmd("store -1")
+    assert not bridge.fake.stores
+
+
+def test_a_store_cut_short_is_reported_as_failed(ctl, bridge):
+    ctl.cmd("set ARCADE_CONTOUR 30")
+    ctl.settle()
+    with bridge.lock:
+        ctl.cmd("store 80")
+        bridge._conn.shutdown(socket.SHUT_RDWR)  # the cable is pulled before the unit answers
+    ctl.wait_change("connection 0")
+    ctl.wait_change("connection 1")  # and put back: everything is read again
+    assert stored(ctl) == {"storing": -1, "status": 2, "slot": 80, "seq": 1}  # no answer: reported as failed
+    assert bridge.fake.stores in ([], [80])  # the unit may have got the command before the cable went
+    bridge.fake.stores.clear()
+
+
 def test_setup_write(ctl, bridge):
     ctl.cmd("setup SETUP_LEVEL 100")
     ctl.cmd("sync")
@@ -288,6 +348,8 @@ def test_not_connected(exe, tmp_path):
     try:
         with pytest.raises(CtlError, match="not connected"):
             c.cmd("set ARCADE_CONTOUR 30")
+        with pytest.raises(CtlError, match="not connected"):
+            c.cmd("store 80")
         with pytest.raises(CtlError, match="timed out"):
             c.cmd("connected 200")
     finally:

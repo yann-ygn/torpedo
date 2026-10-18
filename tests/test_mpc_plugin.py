@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 
 from fakebridge import FakeBridge
-from torpedo.fake import FakeHid
-from torpedo.protocol import MSG_PARAM, PARAM_BY_NAME
+from torpedo.fake import PRESET_NAMES, FakeHid
+from torpedo.protocol import EDIT_BUFFER, MSG_PARAM, PARAM_BY_NAME
 
 MPC = Path(__file__).resolve().parent.parent / "mpc"
 pytestmark = pytest.mark.skipif(
@@ -181,6 +181,132 @@ def test_program_selects_a_preset(host, bridge):
     host.settle()
     assert bridge.fake.setup[3] == 1
     assert host.cmd("programs")[-1] == "current 1"
+
+
+# --- the PRESET page ---------------------------------------------------------------------------------------------
+
+def press(host, key: str):
+    """A tap. A tile is a Toggle Switch on MPC, so a lit one goes to 0; an action button goes to 1."""
+    value = 1 - host.get(key)[0] if key.startswith("slot_") else 1
+    host.cmd(f"set {INDEX[key]} {value:g}")
+    host.settle()
+
+
+def wait_text(host, key: str, text: str, timeout: float = 5):
+    end = time.monotonic() + timeout
+    while host.text(key) != text:
+        assert time.monotonic() < end, f"{key} is {host.text(key)!r}, not {text!r}"
+        host.cmd("sleep 20")
+        host.cmd("run 40")
+
+
+def message(host) -> tuple[str, str]:
+    return host.text("pmsg"), host.text("pmsg2")
+
+
+def edit(host):
+    host.set("arcade_contour", 30)  # A001 is in arcade mode
+    host.settle()
+    assert host.text("pui") == "EDITED"
+
+
+def test_tiles_show_a_bank_and_follow_the_preset(host, bridge):
+    assert host.text("bank") == "001-016" and host.text("pui") == "CLEAN"
+    assert [host.text(f"slot_{n}") for n in (1, 2)] == ["A001 BDELUXE 1 RBN", "A002 BDELUXE 1 DYN421"]
+    assert [host.get(f"slot_{n}")[0] for n in (1, 2)] == [1, 0]  # lit: the current preset
+    host.set("preset", 20)
+    host.settle()
+    assert host.text("bank") == "017-032"  # the tiles went to its bank
+    assert host.text("slot_4") == f"A020 {PRESET_NAMES[19]}" and host.get("slot_4")[0] == 1
+    host.set("bank", 4)  # browsing loads nothing
+    host.settle()
+    assert host.text("slot_12") == "A076 USER" and bridge.fake.setup[3] == 19
+
+
+def test_a_tap_loads_a_preset(host, bridge):
+    press(host, "slot_2")
+    assert bridge.fake.setup[3] == 1
+    assert [host.get(f"slot_{n}")[0] for n in (1, 2)] == [0, 1]
+
+
+def test_a_tap_over_edits_asks_first(host, bridge):
+    edit(host)
+    press(host, "slot_2")
+    assert host.text("pui") == "CONFIRM" and host.get("slot_2")[0] == 1
+    assert message(host) == ("LOAD A002?", "THE EDITS TO A001 ARE DROPPED")
+    assert bridge.fake.setup[3] == EDIT_BUFFER  # nothing loaded yet
+    press(host, "p_confirm")
+    assert bridge.fake.setup[3] == 1 and host.text("pui") == "CLEAN"
+
+
+def test_save_and_discard_need_edits(host, bridge):
+    press(host, "p_save")
+    press(host, "p_discard")
+    assert host.text("pui") == "CLEAN"
+    assert message(host) == ("TAP A PRESET TO LOAD IT", "SAVE AS COPIES IT TO ANOTHER ONE")
+
+
+def test_save_stores_the_edits_into_their_preset_once_confirmed(host, bridge):
+    edit(host)
+    assert message(host) == ("A001 HAS UNSAVED EDITS", "SAVE, SAVE AS OR DISCARD THEM")
+    press(host, "p_save")
+    assert message(host) == ("SAVE THE EDITS INTO A001?", "BDELUXE 1 RBN")
+    assert not bridge.fake.stores
+    press(host, "p_confirm")
+    wait_text(host, "pmsg", "SAVED A001")
+    assert host.text("pmsg2") == "BDELUXE 1 RBN"
+    assert bridge.fake.stores == [0] and bridge.fake.presets[0][P["ARCADE_CONTOUR"]] == 30
+    assert host.text("pui") == "CLEAN" and host.text("preset") == "A001 BDELUXE 1 RBN"
+    bridge.fake.stores.clear()  # the fixture checks that nothing else wrote flash
+
+
+def test_save_as_lights_the_empty_presets_and_stores_into_the_one_tapped(host, bridge):
+    press(host, "p_saveas")
+    assert host.text("pui") == "PICK" and host.get("slot_1")[0] == 0
+    assert message(host) == ("SAVE INTO WHICH PRESET?", "TAP IT (THE LIT ONES ARE EMPTY)")
+    host.set("bank", 4)
+    host.settle()
+    assert [host.get(f"slot_{n}")[0] for n in (11, 12)] == [0, 1]  # A075 holds a preset, A076 is empty
+    press(host, "slot_12")
+    assert message(host) == ("SAVE INTO A076 (EMPTY)?", "AS BDELUXE 1 RBN")
+    assert not bridge.fake.stores
+    press(host, "p_confirm")
+    wait_text(host, "pmsg", "SAVED A076")
+    assert bridge.fake.stores == [75]
+    assert host.text("slot_12") == "A076 BDELUXE 1 RBN" and host.get("slot_12")[0] == 1  # now the current one
+    bridge.fake.stores.clear()
+
+
+def test_replacing_a_preset_says_what_it_holds_and_can_be_cancelled(host, bridge):
+    press(host, "p_saveas")
+    press(host, "slot_2")
+    assert message(host) == ("REPLACE A002?", "IT HOLDS BDELUXE 1 DYN421")
+    press(host, "p_cancel")
+    assert host.text("pui") == "CLEAN" and host.get("slot_1")[0] == 1
+    press(host, "p_confirm")  # nothing left to confirm
+    assert not bridge.fake.stores
+
+
+def test_discard_reloads_the_preset(host, bridge):
+    stored = bridge.fake.presets[0][P["ARCADE_CONTOUR"]]
+    edit(host)
+    press(host, "p_discard")
+    assert message(host) == ("DISCARD THE EDITS?", "A001 RELOADS AS STORED")
+    press(host, "p_confirm")
+    assert bridge.fake.setup[3] == 0 and bridge.fake.params[P["ARCADE_CONTOUR"]] == stored
+    assert host.text("pui") == "CLEAN"
+
+
+def test_a_question_goes_away_when_the_unit_changes_under_it(host, bridge):
+    edit(host)
+    press(host, "p_discard")
+    with bridge.lock:
+        bridge.fake.panel_select(2)  # someone turned the preset knob meanwhile
+    host.settle()
+    assert host.text("pui") == "CLEAN"
+    assert message(host) == ("CANCELLED", "THE UNIT CHANGED MEANWHILE")
+    press(host, "p_confirm")
+    assert bridge.fake.setup[3] == 2
 
 
 def test_choosers_step_through_the_units_lists(host, bridge):

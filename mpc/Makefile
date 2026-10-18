@@ -4,7 +4,8 @@
 #   make arm    build/arm/torpedo-probe and torpedo-ctl for Gen1 MPCs (armv7), static, built with Zig
 #   make plugin-host  build/plugin-host: the plugin in a stand-in host, with ASan (tests/test_mpc_plugin.py)
 #   make plugin       plugin/build/plugin/ygn - VST - Torpedo Control/: the plugin folder for the MPC (armv7,
-#                     glibc <= 2.31), with its skin (mpc-vst-plugins' generator; needs `git submodule update --init`)
+#                     glibc <= 2.31), with its skin (mpc-vst-plugins' generator, drawn by the browser renderer on the
+#                     system Chromium: plugin/html_art_local; needs `git submodule update --init`)
 ZIG ?= uvx --from ziglang==0.13.0 python -m ziglang
 CFLAGS = -O2 -Wall -Wextra -std=gnu11 -Icore
 SAN = -g -fsanitize=address,undefined -fno-sanitize-recover=all
@@ -17,7 +18,7 @@ PLUGIN_SRC = plugin/engine.c plugin/plugin_tables.c $(CORE) $(MV)/wrapper/vst2_w
 PLUGIN_DEPS = $(PLUGIN_SRC) $(DEPS) plugin/plugin_tables.h plugin/build/params.h
 PLUGIN_FLAGS = -std=gnu11 -Icore -Iplugin -Iplugin/build -I$(MV)/wrapper
 PLUGIN_DIR = plugin/build/plugin/ygn - VST - Torpedo Control
-GEN_VST = uv run --with pillow python $(MV)/tools/gen_vst.py plugin/vst.json
+GEN_VST = SHADOW_ART=$(CURDIR)/plugin/html_art_local uv run --with pillow python $(MV)/tools/gen_vst.py plugin/vst.json
 
 .PHONY: host tsan arm plugin-host plugin clean
 host: build/probe build/ctl
@@ -60,10 +61,7 @@ plugin/build/torpedo_control.so: $(PLUGIN_DEPS)
 	@echo "highest glibc: $$(readelf -V $@ | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1) (MPC OS 2.x has 2.32)"
 	@echo "exported: $$(readelf --dyn-syms -W $@ | grep -E ' GLOBAL .* [0-9]+ [A-Za-z]' | grep -v UND | awk '{print $$8}')"
 
-plugin/build/shadow_art: $(MV)/tools/shadow_art.c
-	$(CC) -O2 -I$(MV)/tools/vendor/force-shadow/tools -o $@ $< -lm
-
-plugin: plugin/build/torpedo_control.so plugin/build/shadow_art
+plugin: plugin/build/torpedo_control.so plugin/images/*.svg
 	$(GEN_VST)
 	rm -rf plugin/build/plugin && mkdir -p plugin/build/plugin
 	cp -r plugin/build/skin/* plugin/build/plugin/

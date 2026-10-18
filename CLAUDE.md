@@ -72,7 +72,8 @@ reference implementation.
   round trip (`04 01` → `0b` info) works. `mpc/`: C core (`core/tp_hid.c` hidraw or
   `unix:` socket, `core/tp_dev.c` exchange/poll/cache like device.py), tables
   generated from protocol.py by `mpc/gen_tables.py` (flash-writing commands left
-  out), `probe/probe.c` (read-only check, `--listen`). `make -C mpc host` (ASan,
+  out, except the preset store the PRESET page needs), `probe/probe.c` (read-only
+  check, `--listen`). `make -C mpc host` (ASan,
   used by tests/test_mpc.py against tests/fakebridge.py), `make -C mpc arm` (static
   musl via Zig from PyPI: no Docker here). The plugin builds on github.com/sd88me/mpc-vst-plugins
   (VST2 wrapper, int16 effect path: so a silent instrument used as a control surface, not
@@ -85,17 +86,33 @@ reference implementation.
 - MPC plugin proper (branch `mpc-plugin`): `mpc/plugin/` on mpc-vst-plugins' VST2 wrapper
   (submodule `mpc/mpc-vst-plugins`, pinned; `git submodule update --init`). Scope: the
   unit's parameters and presets only (no IR upload, files, preset import/export) and no
-  project recall (empty state chunk). `gen_plugin.py` derives params.json, value texts
-  (plugin_tables.c) and layout.conf from layout.py; param 0 is a virtual read-only `view`
-  (offline/simulation/arcade/ir) every skin line hangs on (`when=view:...`): one page per
-  mode plus a "not connected" page. `engine.c`: silent instrument, one tp_core shared by
-  all instances, `display_rev` = core revision, presets in MPC's PRESET menu. Choosers
-  are readout + `-`/`+` buttons (a `stepper` under `when=` loses its arrows).
+  project recall (empty state chunk). `gen_plugin.py` derives params.json and value texts
+  (plugin_tables.c) from layout.py and checks `layout.conf` against them; param 0 is a virtual
+  read-only `view` (offline/simulation/arcade/ir) the skin's `when=view:...` lines hang on.
+  `engine.c`: silent instrument, one tp_core shared by all instances, `display_rev` = core
+  revision, presets in MPC's PRESET menu.
+  **Skin (2026-10-18 rework):** `layout.conf` is hand-owned and edited in the skin studio
+  (`tools/studio.py serve plugin/layout.conf --params plugin/params.json [--host <ip>]`); an MPC
+  page is not the TUI's rack. Simulation only for now (arcade/IR show a placeholder), tabs AMP /
+  CAB / EQ, Dracula palette. Each panel is one Q-Link group (every 4 keys of the tab's single
+  `qlinks` line; `qlink_bounds=column`): MPC outlines the active group, touching a control picks
+  it, the Q-Link button steps through them (confirmed on the Key 37). EQ: guitar/bass bands
+  (5 gains), custom ignored. Choosers are readout + arrow buttons drawn from `images/*.svg`
+  (the browser renderer has no sized plain buttons). The skin is drawn by the browser
+  renderer (`"art": "html"`) on the system Chromium through `plugin/html_art_local` (no Docker).
   `make -C mpc plugin` builds the device folder (Zig, glibc 2.17 symbols; skin via
   `uv run --with pillow`), `make -C mpc plugin-host` the ASan stand-in host
   (tests/test_mpc_plugin.py). Previews: `studio.py preview` (see Makefile). The folder
   carries `plugin-meta.xml`, which upstream's `mpc-store.sh -t <Synths> sync` needs to
-  register it. Works on the Key 37 (2026-10-17); the UI still needs tweaking.
+  register it. On the Key 37 the plugin lives in `/storage/Synths/` (a skin change needs an
+  `acvs` restart: ask first).
+  **PRESET tab (2026-10-18, first tab, every mode):** 16 tiles show a bank (tap loads; lit = the
+  current preset), SAVE / SAVE AS / DISCARD. Loading over edits, discarding and saving are each a
+  CONFIRM/CANCEL question (`engine.c` state machine; the `pui` param drives the buttons'
+  `when=`), dropped after 20 s or when the unit changes under it. SAVE AS lights the empty
+  ("USER") slots; the name is kept (no text entry on MPC). A save is `tp_core_store`
+  (`04 73 n`, after the queued writes, names re-read to check it): the only flash write the C
+  side exports. Tested against the emulator (tests/test_mpc_core.py, test_mpc_plugin.py).
 
 ## Safety
 

@@ -11,12 +11,13 @@
 #include "tp_dev.h"
 #include "tp_hid.h"
 
-enum { OP_PARAM, OP_SETUP, OP_PRESET, OP_CAB, OP_IR };
+enum { OP_PARAM, OP_SETUP, OP_PRESET, OP_CAB, OP_IR, OP_STORE };
 typedef struct {
-    uint8_t kind, index;   /* index: the parameter, setting or IR slot (0 for a preset or cab) */
+    uint8_t kind, index;   /* index: the parameter, setting, IR slot or preset to store (0 for a preset or cab selection) */
     int value;
 } op_t;
-#define MAX_OPS (TP_NPARAMS + TP_NSETUP + 4)   /* one per kind and index */
+#define MAX_OPS (TP_NPARAMS + TP_NSETUP + 5)   /* one per kind and index (one store at a time) */
+#define TP_STORE_TIMEOUT_MS 6000   /* storing a preset was answered after ~2.1 s (device.py STORE_TIMEOUT) */
 
 typedef struct {
     int count;
@@ -49,6 +50,8 @@ struct tp_core {
     int nops, busy;
     tp_changes_t changes;
     unsigned revision;   /* +1 whenever changes are noted */
+    int storing, store_status, store_slot;   /* see tp_state_t */
+    unsigned store_seq;
     bank_t cabs, irs;
     name_t names[TP_PRESETS + 1];   /* [TP_EDIT_BUFFER]: the edit buffer */
     /* worker only */
@@ -105,6 +108,7 @@ static void settle(tp_core_t *c, const op_t *op)
     case OP_PRESET: want = &c->want_setup[TP_S_SETUP_PRESET]; break;
     case OP_CAB: want = &c->want_param[TP_P_SIMUHP_SPEAKER]; break;
     case OP_IR: want = &c->want_param[WAVES[op->index]]; break;
+    case OP_STORE: return;   /* nothing is shown ahead of it */
     }
     if (*want == op->value)
         *want = -1;
@@ -238,6 +242,8 @@ static int send_cab(tp_core_t *c, int cab)   /* device.py select_cab */
     return 0;
 }
 
+static int send_store(tp_core_t *c, int n);
+
 static int run_op(tp_core_t *c, const op_t *op)
 {
     switch (op->kind) {
@@ -249,6 +255,7 @@ static int run_op(tp_core_t *c, const op_t *op)
         if (send_param(c, FOLDERS[op->index], 0) < 0)
             return -1;
         return send_param(c, WAVES[op->index], op->value);
+    case OP_STORE: return send_store(c, op->value);
     }
     return 0;
 }
@@ -273,6 +280,37 @@ static int read_names(tp_core_t *c)
     const uint8_t cmd[] = {TP_MSG_QUERY, TP_QUERY_NAMES, TP_NAMES_ALL};
     struct names_seen s = {0};
     return tp_exchange(&c->dev, cmd, sizeof cmd, all_names, &s);
+}
+
+static int is_stored(const uint8_t *p, void *ctx)   /* `03 n arcade name`, or `0c 03 n` (not if n was already loaded) */
+{
+    int n = *(int *)ctx;
+    return (p[0] == TP_MSG_NAME && p[1] == n) || (p[0] == TP_MSG_SETUP && p[1] == TP_SETUP_PRESET && p[2] == n);
+}
+
+/* device.py save without a rename: `04 73 n` stores the edit buffer under its own name. Whether it took is checked by
+ * reading the names back (the stored one must be the buffer's), also when the unit didn't answer in time. */
+static int send_store(tp_core_t *c, int n)
+{
+    tp_dev_t *d = &c->dev;
+    const uint8_t cmd[] = {TP_MSG_QUERY, TP_QUERY_STORE, n};
+    d->timeout_ms = TP_STORE_TIMEOUT_MS;
+    int r = tp_exchange(d, cmd, sizeof cmd, is_stored, &n);
+    int lost = r < 0 && errno != ETIMEDOUT;   /* unplugged: the connection is dropped, the store counts as failed */
+    d->timeout_ms = TP_TIMEOUT_MS;
+    if (!lost) {
+        r = tp_read_setup(d) < 0 || read_names(c) < 0 ? -1 : 0;
+        lost = r < 0 && errno != ETIMEDOUT;
+    }
+    pthread_mutex_lock(&c->lock);
+    int ok = r == 0 && !strcmp(c->names[n].name, c->names[TP_EDIT_BUFFER].name);
+    c->storing = -1;
+    c->store_status = ok ? TP_STORE_OK : TP_STORE_FAILED;
+    c->store_slot = n;
+    c->store_seq++;
+    c->revision++;
+    pthread_mutex_unlock(&c->lock);
+    return lost ? -1 : 0;
 }
 
 struct bank_read {
@@ -392,6 +430,12 @@ static void *worker(void *arg)
         c->busy = 0;
         if (r < 0) {   /* unplugged (or unresponsive): start over */
             tp_close(&c->dev);
+            if (c->storing >= 0) {   /* queued, or cut short before it could say */
+                c->store_status = TP_STORE_FAILED;
+                c->store_slot = c->storing;
+                c->store_seq++;
+                c->storing = -1;
+            }
             c->connected = 0;
             c->changes.flags |= TP_CHANGED_CONNECTION;
             c->revision++;
@@ -418,6 +462,7 @@ tp_core_t *tp_core_start(const tp_core_config_t *cfg)
     if (c->cfg.retry_ms <= 0)
         c->cfg.retry_ms = 1000;
     c->dev.fd = -1;
+    c->storing = -1;
     forget_queue(c);
     pthread_condattr_t attr;
     pthread_condattr_init(&attr);
@@ -467,6 +512,10 @@ void tp_core_state(tp_core_t *c, tp_state_t *s)
     s->meter_in = c->meter_in;
     s->meter_out = c->meter_out;
     s->clip = c->clip;
+    s->storing = c->storing;
+    s->store_status = c->store_status;
+    s->store_slot = c->store_slot;
+    s->store_seq = c->store_seq;
     pthread_mutex_unlock(&c->lock);
 }
 
@@ -586,6 +635,22 @@ int tp_core_select_ir(tp_core_t *c, int slot, int ir)
         return fail(c, EPERM);
     c->want_param[WAVES[slot]] = ir;
     enqueue(c, OP_IR, slot, ir);
+    pthread_mutex_unlock(&c->lock);
+    return 0;
+}
+
+int tp_core_store(tp_core_t *c, int n)
+{
+    pthread_mutex_lock(&c->lock);
+    if (!c->connected)
+        return fail(c, ENOTCONN);
+    if (n < 0 || n >= TP_PRESETS)
+        return fail(c, EINVAL);
+    if (c->storing >= 0)
+        return fail(c, EBUSY);
+    c->storing = n;   /* from now on until it ends: the screen says so */
+    c->revision++;
+    enqueue(c, OP_STORE, n, n);
     pthread_mutex_unlock(&c->lock);
     return 0;
 }

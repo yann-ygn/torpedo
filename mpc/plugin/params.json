@@ -535,6 +535,156 @@
    "momentary": true,
    "step_of": "simuhp_wave1",
    "step_delta": 1
+  },
+  {
+   "key": "slot_1",
+   "name": "Slot 1",
+   "display": "string"
+  },
+  {
+   "key": "slot_2",
+   "name": "Slot 2",
+   "display": "string"
+  },
+  {
+   "key": "slot_3",
+   "name": "Slot 3",
+   "display": "string"
+  },
+  {
+   "key": "slot_4",
+   "name": "Slot 4",
+   "display": "string"
+  },
+  {
+   "key": "slot_5",
+   "name": "Slot 5",
+   "display": "string"
+  },
+  {
+   "key": "slot_6",
+   "name": "Slot 6",
+   "display": "string"
+  },
+  {
+   "key": "slot_7",
+   "name": "Slot 7",
+   "display": "string"
+  },
+  {
+   "key": "slot_8",
+   "name": "Slot 8",
+   "display": "string"
+  },
+  {
+   "key": "slot_9",
+   "name": "Slot 9",
+   "display": "string"
+  },
+  {
+   "key": "slot_10",
+   "name": "Slot 10",
+   "display": "string"
+  },
+  {
+   "key": "slot_11",
+   "name": "Slot 11",
+   "display": "string"
+  },
+  {
+   "key": "slot_12",
+   "name": "Slot 12",
+   "display": "string"
+  },
+  {
+   "key": "slot_13",
+   "name": "Slot 13",
+   "display": "string"
+  },
+  {
+   "key": "slot_14",
+   "name": "Slot 14",
+   "display": "string"
+  },
+  {
+   "key": "slot_15",
+   "name": "Slot 15",
+   "display": "string"
+  },
+  {
+   "key": "slot_16",
+   "name": "Slot 16",
+   "display": "string"
+  },
+  {
+   "key": "bank",
+   "name": "Bank",
+   "options": [
+    "001-016",
+    "017-032",
+    "033-048",
+    "049-064",
+    "065-080",
+    "081-096",
+    "097-112",
+    "113-128"
+   ]
+  },
+  {
+   "key": "pui",
+   "name": "Preset page",
+   "options": [
+    "CLEAN",
+    "EDITED",
+    "PICK",
+    "CONFIRM",
+    "SAVING"
+   ]
+  },
+  {
+   "key": "pmsg",
+   "name": "Message",
+   "display": "string"
+  },
+  {
+   "key": "pmsg2",
+   "name": "Message 2",
+   "display": "string"
+  },
+  {
+   "key": "p_save",
+   "name": "Save preset",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "p_saveas",
+   "name": "Save preset as",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "p_discard",
+   "name": "Discard edits",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "p_confirm",
+   "name": "Confirm",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "p_cancel",
+   "name": "Cancel",
+   "min": 0,
+   "max": 1,
+   "momentary": true
   }
  ]
 }

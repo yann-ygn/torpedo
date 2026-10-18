@@ -10,7 +10,8 @@
  *   write reverting) are collected for tp_core_take_changes; the plugin's own writes are not.
  * - When the device goes away (unplugged: ENODEV), the worker reopens it and reads everything
  *   again, since a replugged unit sends nothing on its own.
- * Nothing that writes the unit's flash is sent (presets are edited, never stored). */
+ * - The one thing that writes the unit's flash is tp_core_store, which the plugin only calls once the user has
+ *   confirmed it on screen. Presets are otherwise edited, never stored. */
 #pragma once
 #include <stdint.h>
 
@@ -25,6 +26,8 @@ typedef struct {
     int retry_ms;       /* between connection attempts (0: 1000) */
 } tp_core_config_t;
 
+enum { TP_STORE_NONE, TP_STORE_OK, TP_STORE_FAILED };
+
 typedef struct {
     int connected;
     unsigned generation;   /* +1 at each (re)connection */
@@ -32,6 +35,10 @@ typedef struct {
     int params[TP_NPARAMS];   /* with the queued values on top */
     int setup[TP_NSETUP];
     uint8_t meter_in, meter_out, clip;
+    int storing;               /* the preset being stored (queued or running, ~2 s), else -1 */
+    int store_status;          /* how the last store ended: TP_STORE_* */
+    int store_slot;            /* ...and which preset it was */
+    unsigned store_seq;        /* +1 whenever one ends */
 } tp_state_t;
 
 enum { TP_CHANGED_CONNECTION = 1, TP_CHANGED_NAMES = 2, TP_CHANGED_CABS = 4, TP_CHANGED_IRS = 8 };
@@ -66,6 +73,10 @@ int tp_core_select_preset(tp_core_t *c, int n);   /* 0..127; discards unsaved ed
  * new cab has it, like Torpedo Remote. */
 int tp_core_select_cab(tp_core_t *c, int cab);
 int tp_core_select_ir(tp_core_t *c, int slot, int ir);   /* IR slot 0/1, from the ML bank (folder 0) */
+/* Store the current sound (the edit buffer, under its own name) into preset n, 0..127: a flash write that takes
+ * about 2 s, after the changes queued before it. Afterwards the names are read back and tp_state_t says how it went
+ * (store_status). Only one at a time: -1 with errno EBUSY. ENOTCONN, EINVAL as above. */
+int tp_core_store(tp_core_t *c, int n);
 /* Wait until every queued change has been handled: 0, or -1 with errno ETIMEDOUT. */
 int tp_core_wait_idle(tp_core_t *c, int timeout_ms);
 

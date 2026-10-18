@@ -3,6 +3,7 @@
  * ("changed ..."). Each command ends with "ok", "end" (after a listing) or "error <reason>".
  *   state | meters | cabs | irs | names
  *   set NAME V | setup NAME V | preset N | cab N | ir SLOT N     queue a change
+ *   store N              queue storing the current sound into preset N (a flash write); `storing` prints how it stands
  *   sweep NAME FROM TO   set FROM..TO as fast as possible, from a thread of its own
  *   sync [MS]            wait until the queued changes are handled
  *   connected [MS]       wait for the connection
@@ -170,6 +171,10 @@ static void command(char *line)
             if (i < TP_PRESETS || i == TP_EDIT_BUFFER)
                 out("name %d %d %s\n", i, arcade, name);
         out("end\n");
+    } else if (!strcmp(cmd, "storing")) {
+        tp_state_t s;
+        tp_core_state(core, &s);
+        out("storing %d status %d slot %d seq %u\nend\n", s.storing, s.store_status, s.store_slot, s.store_seq);
     } else if (!strcmp(cmd, "set") && n == 3) {
         int i = param_index(w[1]);
         if (i < 0)
@@ -188,6 +193,8 @@ static void command(char *line)
         result(tp_core_select_cab(core, a1));
     else if (!strcmp(cmd, "ir") && n == 3)
         result(tp_core_select_ir(core, a1, a2));
+    else if (!strcmp(cmd, "store") && n == 2)
+        result(tp_core_store(core, a1));
     else if (!strcmp(cmd, "sweep") && n == 4) {
         struct sweep s = {param_index(w[1]), a2, atoi(w[3]), 0};
         pthread_t t;
