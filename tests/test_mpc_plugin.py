@@ -403,7 +403,8 @@ def test_rename_needs_no_unsaved_edits(host, bridge):
 
 
 def test_skin_post_leaves_one_toggle_per_tap(tmp_path):
-    """A trigger or list row toggles by itself when a tap is released: an extra Mouse Down toggle fired it twice."""
+    """A trigger toggles by itself when a tap is released: an extra Mouse Down toggle fired it twice. A list row's
+    name label covers its Button, so its Mouse Down toggle is what a tap reaches."""
     sys.path.insert(0, str(MPC / "plugin"))
     import skin_post
 
@@ -420,7 +421,7 @@ def test_skin_post_leaves_one_toggle_per_tap(tmp_path):
     assert skin_post.main(str(tmp_path)) == 0
     after = {d["key"]: [(a["onAction"], a["handler"]) for a in d["value"]["actions"]]
              for d in json.loads(tui.read_text(encoding="utf-8"))["localComponentDefinitions"]}
-    assert after == {"shTrig_k_q_Q": [enter], "shRow_392x46": [enter], "shToggle_ns0": [qlink, enter],
+    assert after == {"shTrig_k_q_Q": [enter], "shRow_392x46": [tap, enter], "shToggle_ns0": [qlink, enter],
                      "shPopField_150x64": [tap, enter]}
     assert skin_post.main(str(tmp_path)) == 1  # nothing left to fix: the builder's keys changed, say so
 

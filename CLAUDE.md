@@ -109,8 +109,9 @@ reference implementation.
   (the browser renderer has no sized plain buttons). The skin is drawn by the browser
   renderer (`"art": "html"`) on the system Chromium through `plugin/html_art_local` (no Docker).
   `plugin/skin_post.py` (vst.json `skin_post`) drops the builder's Mouse Down → Toggle Switch from
-  trigger buttons and list rows: their Button component toggles by itself on release, so every
-  tap fired twice (keys typed two characters, arrows stepped two; seen on the Key 37).
+  trigger buttons: their Button component toggles by itself on release, so every tap fired twice
+  (keys typed two characters, arrows stepped two; seen on the Key 37). List rows keep it: their
+  name label covers the Button, so it is all a tap reaches (dropping it left the tiles dead).
   `make -C mpc plugin` builds the device folder (Zig, glibc 2.17 symbols; skin via
   `uv run --with pillow`), `make -C mpc plugin-host` the ASan stand-in host
   (tests/test_mpc_plugin.py). Previews: `studio.py preview` (see Makefile). The folder
