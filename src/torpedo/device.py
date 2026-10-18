@@ -262,7 +262,7 @@ class Torpedo:
 
         def complete(p: bytes) -> bool:
             if p[0] == MSG_NAME:
-                seen[p[1]] = PresetName(p[1], parse_name(p), bool(p[2]))
+                seen[p[1]] = PresetName(p[1], parse_name(p), p[2])
             return len(seen) == PRESETS + 1
         self._exchange(MSG_QUERY, QUERY_NAMES, NAMES_ALL, until=complete)
         return [seen[i] for i in sorted(seen)]
@@ -315,7 +315,7 @@ class Torpedo:
         if names is None and (not overwrite or name is None):
             names = self.read_names()
         if not overwrite and not names[n].empty:
-            raise ValueError(f"{preset_name(n)} holds \"{names[n].name}\": "
+            raise ValueError(f"{names[n].label} holds \"{names[n].name}\": "
                              "pass overwrite=True to replace it")
         current = names[-1].name if names is not None else self.read_buffer_name()
         name = check_name(name) if name is not None else current
@@ -326,8 +326,9 @@ class Torpedo:
         msgs = self._exchange(MSG_QUERY, QUERY_STORE, n,
                               until=lambda p: p[:2] == stored[0] or p[:3] == stored[1],
                               timeout=STORE_TIMEOUT)
-        return next((PresetName(n, parse_name(p), bool(p[2])) for p in msgs
-                     if p[0] == MSG_NAME and p[1] == n), PresetName(n, name, False))
+        mode = self.params.get(PRESET_MODE, SIMULATION)  # what it stored, unless the reply says
+        return next((PresetName(n, parse_name(p), p[2]) for p in msgs
+                     if p[0] == MSG_NAME and p[1] == n), PresetName(n, name, mode))
 
     def select_preset(self, n: int) -> dict[int, int]:
         """Load a stored preset, discarding unsaved edits. Returns the changed parameters."""
@@ -354,7 +355,8 @@ class Torpedo:
         if not 0 <= n < PRESETS:
             raise ValueError(f"preset must be 0..{PRESETS - 1}")
         if self.edited and self.source == n:
-            raise ValueError(f"{preset_name(n)} has unsaved edits: save or discard them first")
+            raise ValueError(f"{preset_name(n, self.params.get(PRESET_MODE))} has unsaved edits: "
+                             "save or discard them first")
         current = self.preset == n
         status = bytes([MSG_QUERY, STATUS, 0])
         self._exchange(MSG_QUERY, QUERY_CLEAR, n, until=lambda p: p[:3] == status,
@@ -362,7 +364,7 @@ class Torpedo:
         self._commit()
         names = self.read_names()
         if names[n].name != EMPTY_PRESET:
-            raise RuntimeError(f"{preset_name(n)} is still named \"{names[n].name}\" after clearing it")
+            raise RuntimeError(f"{names[n].label} is still named \"{names[n].name}\" after clearing it")
         if current:
             self.read_params()  # the unit renamed the edit buffer but sent no parameters
         return names

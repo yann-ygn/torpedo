@@ -26,7 +26,7 @@ typedef struct {
 
 typedef struct {
     char name[TP_NAME_LEN];
-    int arcade;
+    int mode;   /* the PRESET_MODE stored with it */
 } name_t;
 
 static const int WAVES[2] = {TP_P_SIMUHP_WAVE0, TP_P_SIMUHP_WAVE1};
@@ -163,10 +163,10 @@ static int on_msg(const uint8_t *p, void *ctx)
         c->saw_edit = 1;
     else if (p[0] == TP_MSG_SETUP && p[1] == TP_SETUP_PRESET_SOURCE)
         c->saw_source = 1;
-    else if (p[0] == TP_MSG_NAME && p[1] <= TP_EDIT_BUFFER) {   /* `03 idx arcade name` */
+    else if (p[0] == TP_MSG_NAME && p[1] <= TP_EDIT_BUFFER) {   /* `03 idx mode name` */
         pthread_mutex_lock(&c->lock);
         copy_str(c->names[p[1]].name, p + 3, TP_REPORT_LEN - 3, TP_NAME_LEN);
-        c->names[p[1]].arcade = p[2];
+        c->names[p[1]].mode = p[2];
         c->changes.flags |= TP_CHANGED_NAMES;
         c->revision++;
         pthread_mutex_unlock(&c->lock);
@@ -283,13 +283,13 @@ static int read_names(tp_core_t *c)
     return tp_exchange(&c->dev, cmd, sizeof cmd, all_names, &s);
 }
 
-static int is_stored(const uint8_t *p, void *ctx)   /* `03 n arcade name`, or `0c 03 n` (not if n was already loaded) */
+static int is_stored(const uint8_t *p, void *ctx)   /* `03 n mode name`, or `0c 03 n` (not if n was already loaded) */
 {
     int n = *(int *)ctx;
     return (p[0] == TP_MSG_NAME && p[1] == n) || (p[0] == TP_MSG_SETUP && p[1] == TP_SETUP_PRESET && p[2] == n);
 }
 
-static int is_renamed(const uint8_t *p, void *ctx)   /* the echo: `03 80 arcade name` */
+static int is_renamed(const uint8_t *p, void *ctx)   /* the echo: `03 80 mode name` */
 {
     const char *name = ctx;
     size_t n = strlen(name);
@@ -752,14 +752,14 @@ int tp_core_ir_name(tp_core_t *c, int i, char *buf, int len)
     return 0;
 }
 
-int tp_core_preset_name(tp_core_t *c, int n, char *buf, int len, int *arcade_out)
+int tp_core_preset_name(tp_core_t *c, int n, char *buf, int len, int *mode_out)
 {
     pthread_mutex_lock(&c->lock);
     if (n < 0 || n > TP_EDIT_BUFFER)
         return fail(c, ERANGE);
     copy_out(buf, len, c->names[n].name);
-    if (arcade_out)
-        *arcade_out = c->names[n].arcade;
+    if (mode_out)
+        *mode_out = c->names[n].mode;
     pthread_mutex_unlock(&c->lock);
     return 0;
 }

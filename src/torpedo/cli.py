@@ -6,7 +6,7 @@ from . import backup, ir, presetfile
 from .device import FOLDERS, MIC, MIC_2, MUTE, MUTE_2, SPEAKER, WAVES, Torpedo
 from .protocol import (ARCADE, ARCADE_EDITABLE, BANK_PARAMS, EMPTY_PRESET, FOLDER_BANK_OFFSET, IR, MODE_NAMES,
                        PARAM_BY_NAME, PARAMS, PRESET_MODE, PRESETS, SETUP, SETUP_OPTIONS, Cab,
-                       find_param, preset_name)
+                       find_param, preset_index, preset_name)
 
 
 def parse_assignment(s: str):
@@ -33,15 +33,17 @@ def parse_param(s: str):
 
 
 def parse_preset(s: str) -> int:
-    """`A001` or `1` -> index 0."""
-    t = s.upper().removeprefix("A")
-    if t.isdigit() and 1 <= int(t) <= PRESETS:
-        return int(t) - 1
-    raise argparse.ArgumentTypeError(f"preset must be 1..{PRESETS} or A001..A{PRESETS:03d}")
+    """`S001`, `A001`, `I001` or `1` -> index 0."""
+    try:
+        return preset_index(s)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
 
 
 def fmt_preset(t: Torpedo) -> str:
-    return preset_name(t.source) + (" (modified)" if t.edited else "")
+    """The current sound as the unit's panel shows it: its preset's number after the sound's own mode letter."""
+    mode = (t.params or t.read_params())[PRESET_MODE]
+    return preset_name(t.source, mode) + (" (modified)" if t.edited else "")
 
 
 def print_changes(before: dict[int, int], changes: dict[int, int]):
@@ -103,11 +105,11 @@ def cmd_presets(t: Torpedo, args):
         if p.empty and not args.all:
             continue
         mark = "*" if p.index == current else " "
-        kind = "" if p.empty else "arcade" if p.arcade else "simulation"  # as Remote labels them
-        print(f"{mark} {preset_name(p.index)} {p.name:<26} {kind}")
+        kind = "" if p.empty else MODE_NAMES.get(p.mode, "?")
+        print(f"{mark} {p.label} {p.name:<26} {kind}")
     hidden = sum(p.empty for p in names[:PRESETS])
     if hidden and not args.all:
-        print(f"  ({hidden} empty USER slots hidden, first {preset_name(first_empty(names))}; --all shows them)")
+        print(f"  ({hidden} empty USER slots hidden, first {names[first_empty(names)].label}; --all shows them)")
     print(f"current: {fmt_preset(t)} \"{names[-1].name}\"")
 
 
@@ -119,10 +121,10 @@ def cmd_save(t: Torpedo, args):
     names = t.read_names()
     slot = args.preset if args.preset is not None else first_empty(names)
     if not names[slot].empty and not args.overwrite:
-        sys.exit(f"error: {preset_name(slot)} holds \"{names[slot].name}\"; "
+        sys.exit(f"error: {names[slot].label} holds \"{names[slot].name}\"; "
                  "add --overwrite to replace it")
     saved = t.save(slot, args.name, overwrite=args.overwrite, names=names)
-    print(f"saved {preset_name(saved.index)} \"{saved.name}\"")
+    print(f"saved {saved.label} \"{saved.name}\"")
 
 
 def cmd_rename(t: Torpedo, args):
@@ -130,23 +132,23 @@ def cmd_rename(t: Torpedo, args):
         sys.exit("error: the current preset has unsaved edits, and renaming saves them too: "
                  "`torpedo save` or `torpedo discard` first")
     saved = t.save(t.source, args.name, overwrite=True)
-    print(f"renamed {preset_name(saved.index)} to \"{saved.name}\"")
+    print(f"renamed {saved.label} to \"{saved.name}\"")
 
 
 def cmd_clear(t: Torpedo, args):
     names = t.read_names()
     n = args.preset
     if not names[n].empty and not args.yes:
-        sys.exit(f"error: {preset_name(n)} holds \"{names[n].name}\"; add --yes to empty it "
+        sys.exit(f"error: {names[n].label} holds \"{names[n].name}\"; add --yes to empty it "
                  "(flash write)")
     t.clear_preset(n)
-    print(f"cleared {preset_name(n)} (was \"{names[n].name}\"): now an empty USER slot")
+    print(f"cleared {names[n].label} (was \"{names[n].name}\"): now an empty USER slot")
 
 
 def cmd_export(t: Torpedo, args):
     preset = presetfile.export(t, args.preset)
     presetfile.save_file(preset, args.file)
-    what = "the current sound" if args.preset is None else preset_name(args.preset)
+    what = "the current sound" if args.preset is None else t.read_names()[args.preset].label
     print(f"exported {what} \"{preset['name']}\" to {args.file}")
 
 
@@ -155,13 +157,13 @@ def cmd_import(t: Torpedo, args):
     if args.preset is not None:
         names = t.read_names()
         if not names[args.preset].empty and not args.overwrite:
-            sys.exit(f"error: {preset_name(args.preset)} holds \"{names[args.preset].name}\"; "
+            sys.exit(f"error: {names[args.preset].label} holds \"{names[args.preset].name}\"; "
                      "add --overwrite to replace it")
     name = presetfile.import_preset(t, preset, args.preset, overwrite=args.overwrite)
     if args.preset is None:
         print(f"loaded \"{name}\" as the current sound (unsaved: `torpedo save` stores it)")
     else:
-        print(f"imported \"{name}\" into {preset_name(args.preset)}")
+        print(f"imported \"{name}\" into {t.read_names()[args.preset].label}")
 
 
 def parse_setup(s: str):
@@ -364,7 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("set", help="edit the current preset (not saved): NAME=VALUE ...")
     p.add_argument("assignments", nargs="+", type=parse_assignment, metavar="NAME=VALUE")
     p.set_defaults(func=cmd_set)
-    p = sub.add_parser("preset", help="show or select the current preset (1 = A001)")
+    p = sub.add_parser("preset", help="show or select the current preset (1, or S001, A001, I001: the first)")
     p.add_argument("preset", nargs="?", type=parse_preset)
     p.set_defaults(func=cmd_preset)
     sub.add_parser("discard", help="leave unsaved edits (reload the stored preset; the unit keeps them as A001* etc.)").set_defaults(func=cmd_discard)

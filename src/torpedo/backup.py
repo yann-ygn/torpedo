@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from .device import Torpedo
 from .protocol import (EMPTY_PARAMS, EMPTY_PRESET, PARAM_BY_NAME, PARAMS, PRESETS, SETUP,
-                       SETUP_OPTIONS, check_name, preset_name)
+                       SETUP_OPTIONS, check_name)
 
 FORMAT, VERSION = "torpedo-backup", 1
 Progress = Callable[[int, int], None]
@@ -41,7 +41,7 @@ def read_state(t: Torpedo, progress: Progress | None = None) -> dict:
         for n in range(PRESETS):
             t.select_preset(n)
             values = t.read_params()
-            presets.append({"index": n, "label": preset_name(n), "name": names[n].name,
+            presets.append({"index": n, "label": names[n].label, "name": names[n].name,
                             "arcade": names[n].arcade,
                             "params": {p.name: values[p.index] for p in PARAMS}})
             if progress:

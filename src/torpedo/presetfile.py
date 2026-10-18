@@ -16,7 +16,7 @@ import json
 
 from .device import FOLDERS, MIC, MIC_2, SPEAKER, WAVES, Torpedo
 from .protocol import (ARCADE, EMPTY_PARAMS, IR, PARAM_BY_NAME, PARAMS, PRESET_MODE, Cab,
-                       check_name, preset_name)
+                       check_name)
 
 FORMAT, VERSION = "torpedo-preset", 1
 PREVIEW = PARAM_BY_NAME["SIMUHP_PREVIEW"].index
@@ -129,7 +129,7 @@ def import_preset(t: Torpedo, preset: dict, n: int | None = None, overwrite: boo
     if n is not None:
         target = t.read_names()[n]
         if not overwrite and not target.empty:
-            raise ValueError(f"{preset_name(n)} holds \"{target.name}\": "
+            raise ValueError(f"{target.label} holds \"{target.name}\": "
                              "pass overwrite=True to replace it")
     values = resolve(preset, t.read_cabs(), t.read_irs())
     t.write_params(values)

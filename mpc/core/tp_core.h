@@ -87,5 +87,5 @@ int tp_core_cab_count(tp_core_t *c);
 int tp_core_cab(tp_core_t *c, int i, tp_cab_t *out);
 int tp_core_ir_count(tp_core_t *c);
 int tp_core_ir_name(tp_core_t *c, int i, char *buf, int len);
-/* n: 0..127, or TP_EDIT_BUFFER; *arcade (if not NULL): the preset is in arcade mode */
-int tp_core_preset_name(tp_core_t *c, int n, char *buf, int len, int *arcade);
+/* n: 0..127, or TP_EDIT_BUFFER; *mode (if not NULL): the PRESET_MODE stored with it (TP_ARCADE...) */
+int tp_core_preset_name(tp_core_t *c, int n, char *buf, int len, int *mode);

@@ -156,13 +156,14 @@ async def test_save_into_empty_slot_and_overwrite_needs_confirmation(app, dev):
         await settle(app, pilot)
         await pilot.press("s")
         await pilot.pause()
+        assert app.screen.query_one("#slot").value == "S076"  # the first empty slot, as the panel shows it
         app.screen.query_one("#name").value = "MY SOUND"
         await pilot.press("enter")
         await settle(app, pilot)
         assert dev.stores == [75] and dev.names[75] == "MY SOUND"
         await pilot.press("s")
         await pilot.pause()
-        app.screen.query_one("#slot").value = "A002"
+        app.screen.query_one("#slot").value = "2"
         await pilot.press("enter")
         await pilot.pause()
         assert isinstance(app.screen, ConfirmScreen)

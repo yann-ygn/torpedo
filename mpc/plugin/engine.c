@@ -144,9 +144,8 @@ static char mode_letter(int mode)   /* what the unit's panel puts before a prese
 
 typedef struct { char s[8]; } label_t;
 
-/* Preset n as the unit's panel shows it: the letter of the mode it is stored in, then its number (A021 in
- * simulation is S021). The mode is the name list's byte: 1 for arcade; 2 for IR (?), if it is PRESET_MODE as it
- * looks, but no IR preset has been seen yet. */
+/* Preset n as the unit's panel shows it: the letter of the mode it is stored in (the name list's byte), then its
+ * number (A021 in simulation is S021). */
 static label_t label(inst_t *in, int n)
 {
     label_t l;

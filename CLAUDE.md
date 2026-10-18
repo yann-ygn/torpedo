@@ -124,8 +124,9 @@ reference implementation.
   `when=`), dropped after 20 s or when the unit changes under it. SAVE AS lights the empty
   ("USER") slots. A save is `tp_core_store` (`04 73 n`, after the queued writes, names re-read
   to check it): the only flash write the C side exports. Checked on the Key 37. Presets read like
-  the unit's panel, mode letter then number (S021): a slot's from the name list's mode byte (IR = 2
-  assumed), the header's from the sound's PRESET_MODE. Mute toggles are red when on.
+  the unit's panel, mode letter then number (S021), here and in the CLI/TUI (`preset_name(n, mode)`,
+  `preset_index` takes them with or without the letter): a slot's from the name list's mode byte
+  (its PRESET_MODE, 2 = IR seen on the unit), the current sound's from its own PRESET_MODE. Mute toggles are red when on.
   **Names (2026-10-18):** MPC has no text entry a VST2 skin can call (only "menu overlay", empty
   for VST2), so the PRESET tab has its own keyboard (A–Z, 0–9, space, DEL, CLEAR: `k_*`
   triggers; `pkb` swaps it for the tiles). A save question has NAME... (OK goes back to the

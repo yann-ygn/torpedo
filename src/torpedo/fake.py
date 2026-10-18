@@ -250,8 +250,8 @@ class FakeHid:
 
     def _name_report(self, idx: int) -> list[int]:
         name = self.buffer_name if idx == EDIT_BUFFER else self.names[idx]
-        arcade = (self.params if idx == EDIT_BUFFER else self.presets[idx])[PRESET_MODE] == ARCADE
-        return report(MSG_NAME, idx, int(arcade), *name.encode(), 0)
+        mode = (self.params if idx == EDIT_BUFFER else self.presets[idx])[PRESET_MODE]
+        return report(MSG_NAME, idx, mode, *name.encode(), 0)
 
     def _store(self, n: int):
         self.presets[n] = list(self.params)

@@ -181,10 +181,10 @@ static void command(char *line)
         out("end\n");
     } else if (!strcmp(cmd, "names")) {
         char name[TP_NAME_LEN];
-        int arcade;
-        for (int i = 0; !tp_core_preset_name(core, i, name, sizeof name, &arcade); i++)
+        int mode;
+        for (int i = 0; !tp_core_preset_name(core, i, name, sizeof name, &mode); i++)
             if (i < TP_PRESETS || i == TP_EDIT_BUFFER)
-                out("name %d %d %s\n", i, arcade, name);
+                out("name %d %d %s\n", i, mode, name);
         out("end\n");
     } else if (!strcmp(cmd, "storing")) {
         tp_state_t s;

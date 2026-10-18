@@ -38,10 +38,11 @@ SETUP_PRESET_SOURCE = 0x04  # preset the edit buffer came from
 EDIT_BUFFER = 0x80
 PRESETS = 128  # A001..A128
 
-# Preset names: `04 09 81` -> 129 x `03 idx arcade name`: presets 0..127, then
-# the edit buffer (0x80); `04 09 80` -> the edit buffer only. `arcade` is 1 when
-# the preset's PRESET_MODE is arcade (stored with it; Remote's arcade/simulation
-# label). Empty user slots are named "USER".
+# Preset names: `04 09 81` -> 129 x `03 idx mode name`: presets 0..127, then
+# the edit buffer (0x80); `04 09 80` -> the edit buffer only. `mode` is the
+# preset's PRESET_MODE, stored with it (2 = IR seen 2026-10-18): the letter the
+# unit's panel puts before its number (MODE_LETTERS), Remote's arcade/simulation
+# label. Empty user slots are named "USER".
 MSG_NAME = 0x03  # host: 03 80 <name> renames the edit buffer (echoed)
 QUERY_NAMES = 0x09
 NAMES_ALL, NAMES_EDIT_BUFFER = 0x81, 0x80
@@ -162,6 +163,7 @@ EMPTY_PARAMS = [0, 4, 10, 64, 64, 1, 1, 0, 2, 0, 0, 0, 0, 5, 0, 0, 1, 0, 0, 20, 
 PRESET_MODE = PARAM_BY_NAME["PRESET_MODE"].index
 SIMULATION, ARCADE, IR = 0, 1, 2  # PRESET_MODE values; IR = two IR slots instead of a cab
 MODE_NAMES = {SIMULATION: "simulation", ARCADE: "arcade", IR: "ir"}
+MODE_LETTERS = {SIMULATION: "S", ARCADE: "A", IR: "I"}  # the unit's panel: A021 in simulation is S021
 # IR slot n = SIMUHP_FOLDER_IR_n (folder) + SIMUHP_WAVEn (index in that folder's
 # bank). Folder 0 = bank 1 (ML IRs); folder f = bank f + 1 is a guess. Remote's
 # Live UI shows no other IR folder: banks 2-4 may be for other Two notes products.
@@ -268,9 +270,20 @@ def find_param(key: str) -> Param:
         raise KeyError(f"unknown parameter '{key}'") from None
 
 
-def preset_name(n: int) -> str:
-    """Preset index -> label as Torpedo Remote shows it (0 = A001)."""
-    return f"A{n + 1:03d}"
+def preset_name(n: int, mode: int | None) -> str:
+    """Preset index and its PRESET_MODE -> label as the unit's panel shows it (0 in arcade = A001, in
+    simulation S001)."""
+    return f"{MODE_LETTERS.get(mode, '?')}{n + 1:03d}"
+
+
+def preset_index(text: str) -> int:
+    """`S021`, `A021`, `I021` or `21` -> index 20: the mode letter is only what the panel shows."""
+    t = text.strip().upper()
+    if t[:1] in MODE_LETTERS.values():
+        t = t[1:]
+    if not (t.isdigit() and 1 <= int(t) <= PRESETS):
+        raise ValueError(f"preset must be 1..{PRESETS}, with or without its mode letter (S001, A001, I001)")
+    return int(t) - 1
 
 
 def parse_name(p: bytes) -> str:
@@ -282,11 +295,19 @@ def parse_name(p: bytes) -> str:
 class PresetName:
     index: int  # 0..127, or EDIT_BUFFER
     name: str
-    arcade: bool
+    mode: int  # the PRESET_MODE stored with it
 
     @property
     def empty(self) -> bool:
         return self.name == EMPTY_PRESET
+
+    @property
+    def arcade(self) -> bool:
+        return self.mode == ARCADE
+
+    @property
+    def label(self) -> str:
+        return preset_name(self.index, self.mode)
 
 
 # `05 in out clip 00`: every empty-queue reply carries the meters

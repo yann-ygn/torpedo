@@ -4,8 +4,8 @@ import pytest
 
 from torpedo.device import IgnoredWrite, Torpedo
 from torpedo.fake import A001, FakeHid
-from torpedo.protocol import (CLIP_IN, EDIT_BUFFER, EMPTY_PARAMS, MSG_POLL, PARAMS, SETUP,
-                              SETUP_OPTIONS, Meters, find_param, meter_db)
+from torpedo.protocol import (CLIP_IN, EDIT_BUFFER, EMPTY_PARAMS, IR, MSG_POLL, PARAMS, PRESET_MODE, SETUP,
+                              SETUP_OPTIONS, Meters, find_param, meter_db, preset_index)
 
 CONTOUR = find_param("arcade_contour")
 PARAMS_ALL = frozenset(range(len(PARAMS)))
@@ -176,6 +176,17 @@ def test_read_names(torpedo):
     assert len(names) == 129 and names[-1].index == EDIT_BUFFER
     assert names[0].name == "BDELUXE 1 RBN" and names[0].arcade
     assert names[75].empty and not names[74].empty
+
+
+def test_names_carry_the_mode_the_panel_shows(torpedo):
+    torpedo.dev.presets[5][PRESET_MODE] = IR
+    names = torpedo.read_names()
+    assert [names[n].label for n in (0, 5, 75)] == ["A001", "I006", "S076"]
+    assert names[5].mode == IR and not names[5].arcade
+    assert [preset_index(s) for s in ("S021", "a021", "I021", "21")] == [20] * 4
+    for bad in ("X021", "0", "S129", ""):
+        with pytest.raises(ValueError):
+            preset_index(bad)
 
 
 def test_save_into_empty_slot(torpedo):

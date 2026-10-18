@@ -50,7 +50,7 @@ polling. Without polling, the reply to a write may also be a bare `05`
 | `04 0a` | 51 × `01 idx val` | every parameter of the current preset (see table) |
 | `04 0b` | 18 × `0c idx val` | setup values (see table) |
 | `04 08 <bank>` | N × `06 bank idx part …`, then `04 10 bank …` | cabinet bank contents (layout below). Bank 0 = 32 cabs × 4 parts (Two notes + partners: Black Bear, Mirador, Suhr/Celestion…), bank 1 = 86 IRs × 2 parts ("ML-FRMN-FREEDOM"…), banks 2–4 = user IR banks, no records on this unit (only the `04 10` end marker) |
-| `04 09 81` | 129 × `03 idx arcade name` | preset names: presets 0–127 (A001–A128), then the edit buffer (idx 0x80). `arcade` = 1 when the preset is in arcade mode: it follows PRESET_MODE (the edit buffer's flips as soon as the mode changes) and is stored with the preset, which is how Remote marks presets as arcade or simulation. The unit's panel puts the mode's letter before the number (A arcade, S simulation, I IR: A021 in simulation shows as S021); whether this byte is 2 for an IR preset hasn't been seen (no IR preset yet). Empty user slots are named "USER" (A076–A109 and A116–A118 here). The factory simulation presets are A110–A115 ("RECORDING …") and A119–A128 ("… 2MICS"). `04 09 80` returns the edit buffer's entry only |
+| `04 09 81` | 129 × `03 idx mode name` | preset names: presets 0–127 (A001–A128), then the edit buffer (idx 0x80). `mode` is the preset's PRESET_MODE (0 simulation, 1 arcade, 2 IR, seen 2026-10-18): the edit buffer's follows the mode as soon as it changes, and it is stored with the preset, which is how Remote marks presets as arcade or simulation. The unit's panel puts the mode's letter before the number (A arcade, S simulation, I IR: A021 in simulation shows as S021). Empty user slots are named "USER" (A076–A109 and A116–A118 here). The factory simulation presets are A110–A115 ("RECORDING …") and A119–A128 ("… 2MICS"). `04 09 80` returns the edit buffer's entry only |
 | `04 33`, `04 34` | `04 0f slot name` + 3 × `04 31 slot n` | names of the IRs loaded in mic slot 0 / 1. Slot 0 follows SIMUHP_SPEAKER (A001: "LuxTweeDe" = bank 0 #16); slot 1 said "Brit VintC" with mic B muted *(?)* |
 | `04 15 <bank> <idx>` | `6e …` ×2, `6f …` ×45, `70` | the IR's data (Remote uses it for the waveform display and for "download"): see "IR transfers" |
 
@@ -144,11 +144,11 @@ RAM-only is not known: don't send these yet.
 Torpedo Remote has a single "save" (renaming = saving under a new name):
 
 1. `03 80 <name>` (name from byte 2, NUL-padded): names the edit buffer; the
-   device echoes `03 80 <arcade> <name>`. Like other no-op writes, renaming
+   device echoes `03 80 <mode> <name>`. Like other no-op writes, renaming
    it to the name it already has gets no reply at all (seen on the unit
    2026-10-16, "MESA2"), so skip it then (`04 09 80` reads the name).
 2. `04 73 n`: stores the edit buffer into preset n. This writes flash: about
-   2 s later the device sends `03 n <arcade> <name>`, `0c 03 n`, `0c 04 n`,
+   2 s later the device sends `03 n <mode> <name>`, `0c 03 n`, `0c 04 n`,
    `0c 05 00`.
 
 Seen: "TESTCAP2" then "TESTCAP" stored into A076 (an empty "USER" slot).

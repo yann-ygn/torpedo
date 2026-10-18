@@ -18,7 +18,7 @@ from ..layout import (ARCADE_LAYOUT, CAB, IR_LAYOUT, IR_SLOT, LAYOUTS, MIC, MODE
                       SIMULATION_LAYOUT, SLIDER, Control, level_db)
 from ..protocol import (EDIT_BUFFER, MSG_PARAM, PARAMS, PRESET_MODE, PRESETS, SETUP_PRESET,
                         SETUP_OPTIONS, SETUP_PRESET_SOURCE, Cab, Meters, PresetName, check_name,
-                        preset_name)
+                        preset_index, preset_name)
 from .editor import Editor
 from .panes import BackupPane, IrPane, PresetFilesPane, SetupPane
 from .widgets import Choice, ConfirmScreen, FormScreen, MeterBar, PickerScreen, TextScreen, Value
@@ -87,6 +87,11 @@ class Snapshot:
     def source(self) -> int:
         return self.setup.get(SETUP_PRESET_SOURCE if self.edited else SETUP_PRESET, 0)
 
+    @property
+    def label(self) -> str:
+        """The current sound as the unit's panel shows it: its preset's number after the sound's own mode letter."""
+        return preset_name(self.source, self.params.get(PRESET_MODE))
+
 
 def snapshot(t: Torpedo) -> Snapshot:
     return Snapshot(dict(t.params), dict(t.setup), t.meters)
@@ -128,7 +133,7 @@ class PresetList(Vertical):
 
     def show(self, names: list[PresetName], state: Snapshot):
         words = self.query_one("#preset-filter", Input).value.lower().split()
-        key = (tuple((p.name, p.arcade) for p in names), state.source, state.edited, tuple(words))
+        key = (tuple((p.name, p.mode) for p in names), state.source, state.edited, tuple(words))
         if key == self._shown:
             return
         self._shown = key
@@ -136,14 +141,13 @@ class PresetList(Vertical):
         highlighted = options.highlighted_option.id if options.highlighted_option else None
         options.clear_options()
         for p in names[:PRESETS]:
-            label = f"{preset_name(p.index)} {p.name}"
+            label = f"{p.label} {p.name}"
             if words and not all(w in label.lower() for w in words):
                 continue
             current = p.index == state.source
             text = Text(">" if current else " ", style="bold")
-            text.append(f"{preset_name(p.index)} ")
+            text.append(f"{p.label} ")
             text.append(f"{p.name:<25}", style="dim" if p.empty else "bold" if current else "")
-            text.append(" " + ("" if p.empty else "A" if p.arcade else "S"), style="dim")
             if current and state.edited:
                 text.append(" *", style="bold yellow")
             options.add_option(Option(text, id=str(p.index)))
@@ -171,14 +175,14 @@ class PresetList(Vertical):
 class SaveScreen(FormScreen):
     """Slot + name; returns (slot index, name)."""
 
-    def __init__(self, slot: int, name: str):
+    def __init__(self, slot: str, name: str):
         super().__init__()
         self.slot, self.preset_label = slot, name
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Label("Save into preset (A001..A128)")
-            yield Input(preset_name(self.slot), id="slot")
+            yield Label(f"Save into preset (1..{PRESETS}, the mode letter is optional)")
+            yield Input(self.slot, id="slot")
             yield Label("Name (A-Z, 0-9, space)")
             yield Input(self.preset_label, id="name")
             yield Label("", id="error")
@@ -187,16 +191,13 @@ class SaveScreen(FormScreen):
         self.query_one("#name", Input).focus()
 
     def on_input_submitted(self, event: Input.Submitted):
-        text = self.query_one("#slot", Input).value.strip().upper().removeprefix("A")
-        if not (text.isdigit() and 1 <= int(text) <= PRESETS):
-            self.error(f"preset must be A001..A{PRESETS:03d}")
-            return
         try:
+            slot = preset_index(self.query_one("#slot", Input).value)
             name = check_name(self.query_one("#name", Input).value)
         except ValueError as e:
             self.error(str(e))
             return
-        self.dismiss((int(text) - 1, name))
+        self.dismiss((slot, name))
 
 
 class TorpedoApp(App):
@@ -351,7 +352,7 @@ class TorpedoApp(App):
         s = self.state
         if not self.names:
             return
-        text = f"[b]{preset_name(s.source)} {self.names[s.source].name}[/]"
+        text = f"[b]{s.label} {self.names[s.source].name}[/]"
         if s.edited:
             text += "  [b $warning]● edited[/] (unsaved)"
         level, mute = s.setup.get(SETUP_OPTIONS["level"].index), s.setup.get(SETUP_OPTIONS["mute"].index)
@@ -459,8 +460,8 @@ class TorpedoApp(App):
                 self.run_job(lambda t: t.select_preset(n))
         if s.edited:
             self.push_screen(ConfirmScreen(
-                f"Load {preset_name(n)} and leave the unsaved edits to {preset_name(s.source)}?\n\n"
-                f"(The unit keeps them as {preset_name(s.source)}* on its panel.)", "Load"), go)
+                f"Load {self.names[n].label} and leave the unsaved edits to {s.label}?\n\n"
+                f"(The unit keeps them as {s.label}* on its panel.)", "Load"), go)
         else:
             go()
 
@@ -485,13 +486,13 @@ class TorpedoApp(App):
                 store()
             else:
                 self.push_screen(ConfirmScreen(
-                    f"{preset_name(slot)} holds \"{target.name}\". Replace it with the current "
+                    f"{target.label} holds \"{target.name}\". Replace it with the current "
                     f"sound, named \"{name}\"? (flash write)", "Replace"), store)
-        self.push_screen(SaveScreen(empty, self.names[self.state.source].name), chosen)
+        self.push_screen(SaveScreen(self.names[empty].label, self.names[self.state.source].name), chosen)
 
     def saved(self, names: list[PresetName]):
         self.set_names(names)
-        self.notify(f"Saved {preset_name(self.state.source)} \"{names[self.state.source].name}\"")
+        self.notify(f"Saved {names[self.state.source].label} \"{names[self.state.source].name}\"")
 
     def action_rename(self):
         if not self.names:
@@ -507,7 +508,7 @@ class TorpedoApp(App):
             if name:
                 self.run_job(lambda t: (t.save(n, name, overwrite=True), t.read_names())[1],
                              self.saved)
-        self.push_screen(TextScreen(f"Rename {preset_name(n)}", self.names[n].name, check_name),
+        self.push_screen(TextScreen(f"Rename {self.names[n].label}", self.names[n].name, check_name),
                          renamed)
 
     def action_clear(self):
@@ -517,7 +518,7 @@ class TorpedoApp(App):
             return
         s, target = self.state, self.names[n]
         if s.edited and s.source == n:
-            self.notify(f"{preset_name(n)} has unsaved edits: save (s) or discard (d) first",
+            self.notify(f"{s.label} has unsaved edits: save (s) or discard (d) first",
                         severity="warning")
             return
 
@@ -528,12 +529,12 @@ class TorpedoApp(App):
             clear()
         else:
             self.push_screen(ConfirmScreen(
-                f"Clear {preset_name(n)} \"{target.name}\"? It becomes an empty USER slot with "
+                f"Clear {target.label} \"{target.name}\"? It becomes an empty USER slot with "
                 "the default sound (flash write).", "Clear"), clear)
 
     def cleared(self, n: int, names: list[PresetName]):
         self.set_names(names)
-        self.notify(f"Cleared {preset_name(n)}")
+        self.notify(f"Cleared {names[n].label}")
 
     def action_discard(self):
         if not self.state.edited:
