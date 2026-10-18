@@ -65,6 +65,10 @@ def percent_40(v: int) -> str:
     return f"{v * 2.5:g}%"  # ARCADE_CONTOUR, as Remote shows it
 
 
+def power_amp(v: int) -> str:
+    return str(v) if v else "off"  # (?) every factory arcade preset has 0 with SIMUAMP off; Remote's knob says COLD/OFF
+
+
 @dataclass(frozen=True)
 class Control:
     param: str
@@ -172,7 +176,7 @@ ARCADE_LAYOUT = (
         single("Instrument", "ARCADE_GUITARBASS", kind=CHOICE, choices=GUITAR_BASS),
     )),
     Section("ARCADE", rows=(
-        single("Power amp", "ARCADE_POWERAMP", ends=("cold", "hot")),
+        single("Power amp", "ARCADE_POWERAMP", fmt=power_amp, ends=("cold", "hot")),
         single("Tone", "ARCADE_TONE", ends=("dark", "bright")),
         single("Distance", "ARCADE_DISTANCE", ends=("close", "far")),
         single("Contour", "ARCADE_CONTOUR", fmt=percent_40, ends=("vintage", "modern")),

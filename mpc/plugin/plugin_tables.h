@@ -15,6 +15,7 @@ typedef struct {
     const char *const *text;     /* value text per value, or NULL */
     int ntext;
     const char *otherwise[2];    /* the text outside custom EQ mode (guitar, bass) */
+    uint8_t modes;               /* PP_PARAM: a bit per PRESET_MODE whose page shows it (writes in the others are dropped) */
 } pp_param_t;
 
 #define PP_NPARAMS 132

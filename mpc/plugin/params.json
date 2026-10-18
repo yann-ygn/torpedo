@@ -243,7 +243,8 @@
    "name": "Arcade power amp",
    "min": 0,
    "max": 30,
-   "display": "int"
+   "display": "int",
+   "dynamic_display": true
   },
   {
    "key": "arcade_distance",

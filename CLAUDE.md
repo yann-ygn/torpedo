@@ -93,10 +93,18 @@ reference implementation.
   revision, presets in MPC's PRESET menu.
   **Skin (2026-10-18 rework):** `layout.conf` is hand-owned and edited in the skin studio
   (`tools/studio.py serve plugin/layout.conf --params plugin/params.json [--host <ip>]`); an MPC
-  page is not the TUI's rack. Simulation only for now (arcade/IR show a placeholder), tabs AMP /
-  CAB / EQ, Dracula palette. Each panel is one Q-Link group (every 4 keys of the tab's single
-  `qlinks` line; `qlink_bounds=column`): MPC outlines the active group, touching a control picks
-  it, the Q-Link button steps through them (confirmed on the Key 37). EQ: guitar/bass bands
+  page is not the TUI's rack. Dracula palette. Each panel is one Q-Link group (every 4 keys of the
+  tab's single `qlinks` line; `qlink_bounds=column`): MPC outlines the active group, touching a
+  control picks it, the Q-Link button steps through them (confirmed on the Key 37).
+  **Modes (2026-10-18):** a tab's Q-Links and outlines are fixed at build time (`when=` only hides
+  controls, one condition per line), so a mode with other controls gets its own tab: PRESET |
+  ARCADE | AMP | CAB | IR | EQ. AMP and EQ serve simulation and IR (lines repeated with
+  `when=view:ir`); in arcade AMP/CAB/EQ show the values arcade sets as read-only readouts (what it
+  takes itself, cab, mic A, room, output, stays live); other tabs show a placeholder. The engine
+  drops writes to what the preset's mode doesn't show (`modes` in plugin_tables, from layout.py's
+  LAYOUTS), so a Q-Link left on a hidden control edits nothing. Switching mode recomputes nothing
+  (PROTOCOL.md); what Remote sends on a switch is uncaptured, so the plugin only writes
+  PRESET_MODE. Not yet checked on the Key 37. EQ: guitar/bass bands
   (5 gains), custom ignored. Choosers are readout + arrow buttons drawn from `images/*.svg`
   (the browser renderer has no sized plain buttons). The skin is drawn by the browser
   renderer (`"art": "html"`) on the system Chromium through `plugin/html_art_local` (no Docker).

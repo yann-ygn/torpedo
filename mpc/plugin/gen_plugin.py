@@ -9,7 +9,9 @@ parameters in protocol order (minus the preview and the pinned IR folders), the 
 the steppers' prev/next triggers, then the PRESET page's: 16 tiles, the bank they show, the page's state, two
 message lines, the action buttons, the name being typed, the name keyboard's keys and whether it shows.
 
-`view` (offline / simulation / arcade / ir) is what the skin's `when=view:...` lines hang on. The skin itself,
+`view` (offline / simulation / arcade / ir) is what the skin's `when=view:...` lines hang on. Each Torpedo parameter
+also gets the modes whose layout.py page shows it: the engine drops writes in the others (a tab's Q-Links stay on its
+controls whatever the mode, and only arcade mode refuses what it doesn't show by itself). The skin itself,
 plugin/layout.conf, is not generated: it is designed in the skin studio (an MPC page is not the TUI's), and this
 only checks it against the parameter list.
 """
@@ -73,6 +75,15 @@ def named_controls() -> dict[str, tuple[str, L.Control, L.Row | None]]:
     return found
 
 
+def shown_in() -> dict[str, int]:
+    """Torpedo parameter -> a bit per PRESET_MODE whose layout shows it (the mode switch: every mode)."""
+    modes = {L.MODE_CONTROL.param: (1 << len(L.LAYOUTS)) - 1}
+    for mode, lay in L.LAYOUTS.items():
+        for c in L.controls(lay):
+            modes[c.param] = modes.get(c.param, 0) | 1 << mode
+    return modes
+
+
 def condition(c: L.Control, row: L.Row | None) -> bool:
     """Whether the control only means something in custom EQ mode (the only condition layout.py uses)."""
     conds = {f for f in (c.when, row.when if row else None) if f is not None}
@@ -82,8 +93,9 @@ def condition(c: L.Control, row: L.Row | None) -> bool:
 
 
 def vst_params():
-    """[(params.json entry, table row)] in VST order. A table row: kind, index, list, eq_custom, texts, otherwise."""
+    """[(params.json entry, table row)] in VST order. A table row: kind, index, list, eq_custom, texts, otherwise, modes."""
     controls = named_controls()
+    modes = shown_in()
     out = [({"key": "view", "name": "View", "options": [v.upper() for v in VIEWS]}, ("PP_VIEW", 0, None)),
            ({"key": "preset", "name": "Preset", "min": 1, "max": 128, "display": "int", "dynamic_display": True},
             ("PP_PRESET", 0, None))]
@@ -114,11 +126,11 @@ def vst_params():
                 other = tuple(c.otherwise({L.EQ_MODE: m}) for m in (0, 1))
         if texts:
             entry["dynamic_display"] = True
-        out.append((entry, ("PP_PARAM", p.index, (lst, custom, texts, other))))
+        out.append((entry, ("PP_PARAM", p.index, (lst, custom, texts, other, modes[p.name]))))
     level, mute = SETUP_OPTIONS["level"], SETUP_OPTIONS["mute"]
     out.append(({"key": "out_level", "name": "Output level", "min": level.lo, "max": level.hi, "display": "int",
                  "dynamic_display": True},
-                ("PP_SETUP", level.index, (None, False, [L.level_db(v) for v in level.wire_values], ("-", "-")))))
+                ("PP_SETUP", level.index, (None, False, [L.level_db(v) for v in level.wire_values], ("-", "-"), 0))))
     out.append(({"key": "out_mute", "name": "Output mute", "options": [o.upper() for o in mute.choices]},
                 ("PP_SETUP", mute.index, None)))
     names = {e["key"]: e["name"] for e, _ in out}
@@ -169,6 +181,7 @@ def tables(params) -> tuple[str, str]:
          "    const char *const *text;     /* value text per value, or NULL */",
          "    int ntext;",
          "    const char *otherwise[2];    /* the text outside custom EQ mode (guitar, bass) */",
+         "    uint8_t modes;               /* PP_PARAM: a bit per PRESET_MODE whose page shows it (writes in the others are dropped) */",
          "} pp_param_t;", "",
          f"#define PP_NPARAMS {len(params)}",
          "extern const pp_param_t pp_params[PP_NPARAMS];", ""]
@@ -176,7 +189,7 @@ def tables(params) -> tuple[str, str]:
     c = [f"/* {NOTICE} */", '#include "plugin_tables.h"', ""]
     rows, shared = [], {}  # one array per distinct text list
     for entry, (kind, index, extra) in params:
-        lst, custom, texts, other = extra or (None, False, None, ("-", "-"))
+        lst, custom, texts, other, modes = extra or (None, False, None, ("-", "-"), 0)
         name = "0"
         if texts:
             if tuple(texts) not in shared:
@@ -184,7 +197,7 @@ def tables(params) -> tuple[str, str]:
                 c.append(f"static const char *const {name}[] = {{{', '.join(c_str(t) for t in texts)}}};")
             name = shared[tuple(texts)]
         rows.append(f'    {{{c_str(entry["key"])}, {kind}, {index}, {lists[lst]}, {int(custom)}, '
-                    f'{name}, {len(texts) if texts else 0}, {{{c_str(other[0])}, {c_str(other[1])}}}}},')
+                    f'{name}, {len(texts) if texts else 0}, {{{c_str(other[0])}, {c_str(other[1])}}}, {modes}}},')
     c += ["", "const pp_param_t pp_params[PP_NPARAMS] = {", *rows, "};", ""]
     return "\n".join(h), "\n".join(c)
 

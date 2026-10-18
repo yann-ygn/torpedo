@@ -143,6 +143,7 @@ def test_shows_the_unit(host):
     assert host.text("eq_l_freq_f0") == "120 Hz"  # guitar EQ: fixed band
     assert host.text("eq_l_freq_low") == "-"
     assert host.text("simuamp_modele") == "PP EL34"
+    assert host.text("arcade_poweramp") == "off"
     programs = host.cmd("programs")
     assert programs[0] == "program 0 A001 BDELUXE 1 RBN" and programs[127] == "program 127 A128 USER"
     assert programs[-1] == "current 0"
@@ -163,6 +164,29 @@ def test_arcade_mode_refuses_simulation_params(host, bridge):
     host.settle()
     assert all(b[0] != MSG_PARAM for b in bridge.fake.sent)
     assert host.get("simuamp_gain")[0] == 0
+
+
+def test_other_modes_drop_what_their_pages_dont_show(host, bridge):
+    """A tab's Q-Links stay on its controls whatever the mode, and simulation and IR mode would take anything."""
+    host.set("preset_mode", 2)
+    host.settle()
+    host.wait_view("IR")
+    sent = len(bridge.fake.sent)
+    for key in ("simuhp_distance", "simuhp_speaker", "arcade_tone"):
+        host.set(key, 3)
+    host.cmd(f"set {INDEX['simuhp_mic_next']} 1")
+    host.settle()
+    assert all(b[0] != MSG_PARAM for b in bridge.fake.sent[sent:])
+    assert host.get("simuhp_distance")[0] == 0
+    host.set("simuhp_level", 80)  # IR mode's own
+    host.settle()
+    assert bridge.fake.params[P["SIMUHP_LEVEL"]] == 80
+    host.set("preset_mode", 0)
+    host.settle()
+    host.wait_view("SIMULATION")
+    host.set("arcade_tone", 3)
+    host.settle()
+    assert bridge.fake.params[P["ARCADE_TONE"]] == 38
 
 
 def test_front_panel_follows(host, bridge):

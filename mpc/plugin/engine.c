@@ -7,6 +7,9 @@
  * - "display_rev" is the core's revision plus this instance's own (the PRESET page's state), so the wrapper
  *   (HAS_DISPLAY_REV) reports what changed by itself (front panel, linked parameters, preset loads, the
  *   connection, a question timing out) and redraws texts and when= panels.
+ * - A write to a parameter the preset's mode doesn't show (pp_param_t.modes, from layout.py) is dropped: a tab's
+ *   Q-Links stay on its controls whatever the mode, and in simulation or IR mode the unit would take it, an edit
+ *   nobody hears.
  * - No "state": nothing is saved with the project or pushed to the unit when one loads.
  * - TORPEDO_DEVICE in the environment overrides the device path (tests: unix:<socket>).
  *
@@ -518,20 +521,23 @@ static void set_param(void *p, const char *key, const char *val)
     inst_t *in = p;
     const pp_param_t *pp = find(key, strlen(key));
     tp_state_t s;
-    int v = atoi(val);
+    int v = atoi(val), mode;
     if (!pp)
         return;
-    switch (pp->kind) {   /* refused writes (arcade mode, not connected) leave the value as it was */
+    switch (pp->kind) {   /* refused writes (another mode's, not connected) leave the value as it was */
     case PP_PRESET: tp_core_select_preset(in->core, v - 1); break;
     case PP_SETUP: tp_core_set_setup(in->core, pp->index, v); break;
     case PP_PARAM:
+        tp_core_state(in->core, &s);
+        mode = s.params[TP_P_PRESET_MODE];
+        if (mode < 0 || mode > TP_IR || !(pp->modes & 1 << mode))
+            break;
         if (pp->list == PP_LIST_CAB)
             tp_core_select_cab(in->core, clamp(v, tp_core_cab_count(in->core) - 1));
         else if (pp->list == PP_LIST_IR)
             tp_core_select_ir(in->core, pp->index == TP_P_SIMUHP_WAVE1, clamp(v, tp_core_ir_count(in->core) - 1));
         else if (pp->list == PP_LIST_MIC) {
             tp_cab_t cab;
-            tp_core_state(in->core, &s);
             if (v >= 0 && v < 8 && !tp_core_cab(in->core, s.params[TP_P_SIMUHP_SPEAKER], &cab) && cab.mics[v][0])
                 tp_core_set_param(in->core, pp->index, v);   /* not an empty mic slot */
         } else
