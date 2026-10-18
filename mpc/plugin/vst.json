@@ -7,6 +7,7 @@
   "params": "params.json",
   "layout": "layout.conf",
   "art": "html",
+  "skin_post": "skin_post.py",
   "programs": {"param": "preset"},
   "defines": {"HAS_DISPLAY_REV": 1, "PARAM_TEXT_MAX": 40},
   "build": {"root": ".", "sources": ["engine.c", "plugin_tables.c", "../core/tp_core.c", "../core/tp_dev.c",

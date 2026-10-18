@@ -378,6 +378,29 @@ def test_rename_needs_no_unsaved_edits(host, bridge):
     assert host.text("pui") == "EDITED"
 
 
+def test_skin_post_leaves_one_toggle_per_tap(tmp_path):
+    """A trigger or list row toggles by itself when a tap is released: an extra Mouse Down toggle fired it twice."""
+    sys.path.insert(0, str(MPC / "plugin"))
+    import skin_post
+
+    def acts(*pairs):
+        return [{"onAction": a, "handler": h, "handleName": "Data"} for a, h in pairs]
+    tap, enter, qlink = ("Mouse Down", "Toggle Switch"), ("Enter Pressed", "Toggle Switch"), ("Mouse Down", "Q-Link")
+    defs = [{"key": "shTrig_k_q_Q", "value": {"actions": acts(tap, enter)}},
+            {"key": "shRow_392x46", "value": {"actions": acts(tap, enter)}},
+            {"key": "shToggle_ns0", "value": {"actions": acts(qlink, enter)}},
+            {"key": "shPopField_150x64", "value": {"actions": acts(tap, enter)}}]  # no Button: it toggles once
+    (tmp_path / "Plugin Skins").mkdir()
+    tui = tmp_path / "Plugin Skins" / "TUI.json"
+    tui.write_text(json.dumps({"localComponentDefinitions": defs}), encoding="utf-8")
+    assert skin_post.main(str(tmp_path)) == 0
+    after = {d["key"]: [(a["onAction"], a["handler"]) for a in d["value"]["actions"]]
+             for d in json.loads(tui.read_text(encoding="utf-8"))["localComponentDefinitions"]}
+    assert after == {"shTrig_k_q_Q": [enter], "shRow_392x46": [enter], "shToggle_ns0": [qlink, enter],
+                     "shPopField_150x64": [tap, enter]}
+    assert skin_post.main(str(tmp_path)) == 1  # nothing left to fix: the builder's keys changed, say so
+
+
 def test_choosers_step_through_the_units_lists(host, bridge):
     host.cmd(f"set {INDEX['simuhp_speaker_next']} 1")
     host.settle()
