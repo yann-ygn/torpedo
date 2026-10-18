@@ -73,10 +73,12 @@ int tp_core_select_preset(tp_core_t *c, int n);   /* 0..127; discards unsaved ed
  * new cab has it, like Torpedo Remote. */
 int tp_core_select_cab(tp_core_t *c, int cab);
 int tp_core_select_ir(tp_core_t *c, int slot, int ir);   /* IR slot 0/1, from the ML bank (folder 0) */
-/* Store the current sound (the edit buffer, under its own name) into preset n, 0..127: a flash write that takes
- * about 2 s, after the changes queued before it. Afterwards the names are read back and tp_state_t says how it went
- * (store_status). Only one at a time: -1 with errno EBUSY. ENOTCONN, EINVAL as above. */
-int tp_core_store(tp_core_t *c, int n);
+/* Store the current sound (the edit buffer) into preset n, 0..127, under `name`: NULL or "" keeps the buffer's own,
+ * else 1..TP_NAME_MAX characters of TP_NAME_CHARS, given to the buffer first (`03 80`, device.py rename_buffer). A
+ * flash write that takes about 2 s, after the changes queued before it. Afterwards the names are read back and
+ * tp_state_t says how it went (store_status). Only one at a time: -1 with errno EBUSY. ENOTCONN, EINVAL (a preset
+ * number or a name out of range) as above. */
+int tp_core_store(tp_core_t *c, int n, const char *name);
 /* Wait until every queued change has been handled: 0, or -1 with errno ETIMEDOUT. */
 int tp_core_wait_idle(tp_core_t *c, int timeout_ms);
 

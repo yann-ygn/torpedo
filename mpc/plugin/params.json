@@ -638,7 +638,9 @@
     "EDITED",
     "PICK",
     "CONFIRM",
-    "SAVING"
+    "SAVING",
+    "NAMING",
+    "ASKSAVE"
    ]
   },
   {
@@ -685,6 +687,306 @@
    "min": 0,
    "max": 1,
    "momentary": true
+  },
+  {
+   "key": "p_rename",
+   "name": "Rename preset",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "p_name",
+   "name": "Edit name",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "pname",
+   "name": "Name",
+   "display": "string"
+  },
+  {
+   "key": "k_0",
+   "name": "Key 0",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_1",
+   "name": "Key 1",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_2",
+   "name": "Key 2",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_3",
+   "name": "Key 3",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_4",
+   "name": "Key 4",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_5",
+   "name": "Key 5",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_6",
+   "name": "Key 6",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_7",
+   "name": "Key 7",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_8",
+   "name": "Key 8",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_9",
+   "name": "Key 9",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_a",
+   "name": "Key A",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_b",
+   "name": "Key B",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_c",
+   "name": "Key C",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_d",
+   "name": "Key D",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_e",
+   "name": "Key E",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_f",
+   "name": "Key F",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_g",
+   "name": "Key G",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_h",
+   "name": "Key H",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_i",
+   "name": "Key I",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_j",
+   "name": "Key J",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_k",
+   "name": "Key K",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_l",
+   "name": "Key L",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_m",
+   "name": "Key M",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_n",
+   "name": "Key N",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_o",
+   "name": "Key O",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_p",
+   "name": "Key P",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_q",
+   "name": "Key Q",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_r",
+   "name": "Key R",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_s",
+   "name": "Key S",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_t",
+   "name": "Key T",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_u",
+   "name": "Key U",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_v",
+   "name": "Key V",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_w",
+   "name": "Key W",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_x",
+   "name": "Key X",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_y",
+   "name": "Key Y",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_z",
+   "name": "Key Z",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_space",
+   "name": "Key space",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_del",
+   "name": "Key delete",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "k_clear",
+   "name": "Key clear",
+   "min": 0,
+   "max": 1,
+   "momentary": true
+  },
+  {
+   "key": "pkb",
+   "name": "Name keyboard",
+   "options": [
+    "OFF",
+    "ON"
+   ]
   }
  ]
 }

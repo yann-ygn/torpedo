@@ -13,9 +13,10 @@
  * The PRESET page: 16 tiles show a bank of presets (lit: the current one), a tap loads one. Anything that loses
  * or overwrites something is a question first, answered with CONFIRM or CANCEL: loading over unsaved edits,
  * discarding them, saving (SAVE: into the preset they came from; SAVE AS: tap the preset to save into, the empty
- * ones lit). Saving is the plugin's only flash write (tp_core_store). A question is dropped after a while, or
- * when the unit changes under it (another preset, an edit, a store from another instance), since it was asked
- * about what the screen showed then. */
+ * ones lit), renaming. A save question can change the name first (NAME...: a keyboard replaces the tiles; OK goes
+ * back to the question), and RENAME (no unsaved edits) starts with the keyboard. Saving is the plugin's only flash
+ * write (tp_core_store). A question is dropped after a while, or when the unit changes under it (another preset,
+ * an edit, a store from another instance), since it was asked about what the screen showed then. */
 #define _GNU_SOURCE
 #include <limits.h>
 #include <pthread.h>
@@ -28,14 +29,16 @@
 #include "plugin_tables.h"
 #include "tp_core.h"
 
-#define BANK_SIZE 16          /* tiles on the PRESET page (gen_plugin.py TILES) */
-#define ASK_TIMEOUT_MS 20000  /* an unanswered question goes away */
-#define NOTICE_MS 6000        /* how long the outcome of a store stays up */
-#define EMPTY_PRESET "USER"   /* the name of an empty slot (protocol.py EMPTY_PRESET) */
+#define BANK_SIZE 16           /* tiles on the PRESET page (gen_plugin.py TILES) */
+#define ASK_TIMEOUT_MS 20000   /* an unanswered question goes away */
+#define NAME_TIMEOUT_MS 60000  /* the keyboard: from the last key */
+#define NOTICE_MS 6000         /* how long the outcome of a store stays up */
+#define EMPTY_PRESET "USER"    /* the name of an empty slot (protocol.py EMPTY_PRESET) */
 
-enum { ACT_SAVE, ACT_SAVEAS, ACT_DISCARD, ACT_CONFIRM, ACT_CANCEL };   /* gen_plugin.py ACTIONS */
-enum { PUI_CLEAN, PUI_EDITED, PUI_PICK, PUI_CONFIRM, PUI_SAVING };     /* gen_plugin.py PUI */
-enum { ASK_NONE, ASK_PICK, ASK_SAVE, ASK_LOAD, ASK_DISCARD };
+enum { ACT_SAVE, ACT_SAVEAS, ACT_DISCARD, ACT_CONFIRM, ACT_CANCEL, ACT_RENAME, ACT_NAME };   /* gen_plugin.py ACTIONS */
+enum { PUI_CLEAN, PUI_EDITED, PUI_PICK, PUI_CONFIRM, PUI_SAVING, PUI_NAMING, PUI_ASKSAVE };   /* gen_plugin.py PUI */
+enum { KEY_DEL = 0x08, KEY_CLEAR = 0x18 };   /* gen_plugin.py KEY_*; a character's key is its code */
+enum { ASK_NONE, ASK_PICK, ASK_SAVE, ASK_LOAD, ASK_DISCARD, ASK_RENAME, ASK_NAME };
 
 static pthread_mutex_t shared_lock = PTHREAD_MUTEX_INITIALIZER;
 static tp_core_t *shared_core;
@@ -49,6 +52,9 @@ typedef struct {
     int ask, target;              /* the open question (ASK_*) and the preset it is about */
     int ask_source, ask_edited;   /* what the unit had when it was asked */
     long long ask_until;
+    int back;                     /* ASK_NAME: the question OK goes back to (ASK_SAVE, ASK_RENAME) */
+    char name[TP_NAME_MAX + 1];   /* ASK_NAME: the name being typed */
+    char save_name[TP_NAME_MAX + 1];   /* the name the save or rename question stores under; "": the buffer's */
     unsigned seen_store;          /* tp_state_t.store_seq already reported (UINT_MAX: not looked yet) */
     char notice[2][80];           /* the outcome of the last store, until notice_until */
     long long notice_until;
@@ -143,6 +149,15 @@ static int is_empty(inst_t *in, int n)
     return !strcmp(name, EMPTY_PRESET);
 }
 
+/* The name a save question stores under: the one typed, else the edit buffer's own. */
+static void save_name(inst_t *in, char *buf, int len)
+{
+    if (in->save_name[0])
+        snprintf(buf, len, "%s", in->save_name);
+    else
+        preset_name(in, TP_EDIT_BUFFER, buf, len);
+}
+
 static void set_ask(inst_t *in, int ask)
 {
     if (in->ask != ask)
@@ -157,8 +172,16 @@ static void ask(inst_t *in, const tp_state_t *s, int what, int target)
     in->target = target;
     in->ask_source = source_preset(s);
     in->ask_edited = edited(s);
-    in->ask_until = now_ms() + ASK_TIMEOUT_MS;
+    in->ask_until = now_ms() + (what == ASK_NAME ? NAME_TIMEOUT_MS : ASK_TIMEOUT_MS);
     in->notice_until = 0;
+}
+
+/* The keyboard, filled with `name`, for the question `back` (OK returns to it with the name typed). */
+static void ask_name(inst_t *in, const tp_state_t *s, int back, const char *name)
+{
+    in->back = back;
+    snprintf(in->name, sizeof in->name, "%s", name);
+    ask(in, s, ASK_NAME, in->target);
 }
 
 static void notice(inst_t *in, const char *line1, const char *line2)
@@ -212,6 +235,9 @@ static int pui(const inst_t *in, const tp_state_t *s)
     switch (in->ask) {
     case ASK_NONE: return edited(s) ? PUI_EDITED : PUI_CLEAN;
     case ASK_PICK: return PUI_PICK;
+    case ASK_NAME: return PUI_NAMING;
+    case ASK_SAVE:
+    case ASK_RENAME: return PUI_ASKSAVE;
     default: return PUI_CONFIRM;
     }
 }
@@ -222,10 +248,11 @@ static int tile_on(inst_t *in, const tp_state_t *s, int tile)
     if (!s->connected)
         return 0;
     switch (pui(in, s)) {
-    case PUI_PICK: return is_empty(in, n);           /* where the sound can go without replacing anything */
-    case PUI_CONFIRM: return n == in->target;        /* the preset the question is about */
+    case PUI_CLEAN:
+    case PUI_EDITED: return n == source_preset(s);
+    case PUI_PICK: return is_empty(in, n);   /* where the sound can go without replacing anything */
     case PUI_SAVING: return n == s->storing;
-    default: return n == source_preset(s);
+    default: return n == in->target;         /* the preset the question is about */
     }
 }
 
@@ -239,13 +266,14 @@ static int tile_text(inst_t *in, const tp_state_t *s, int tile, char *buf, int l
     return snprintf(buf, len, "A%03d %s", n + 1, name);
 }
 
+/* Line 0 and 1: the page's two message lines; line 2: the name being typed, with its cursor. */
 static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len)
 {
-    char l[2][80] = {"", ""}, name[TP_NAME_LEN];
-    int src = source_preset(s);
+    char l[3][80] = {"", "", ""}, name[TP_NAME_LEN];
+    int src = source_preset(s), p = pui(in, s);
     if (!s->connected)
         snprintf(l[0], sizeof l[0], "TORPEDO NOT CONNECTED");
-    else switch (pui(in, s)) {
+    else switch (p) {
     case PUI_SAVING:
         snprintf(l[0], sizeof l[0], "SAVING A%03d...", s->storing + 1);
         snprintf(l[1], sizeof l[1], "KEEP THE TORPEDO PLUGGED IN");
@@ -254,35 +282,41 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         snprintf(l[0], sizeof l[0], "SAVE INTO WHICH PRESET?");
         snprintf(l[1], sizeof l[1], "TAP IT (THE LIT ONES ARE EMPTY)");
         break;
-    case PUI_CONFIRM:
-        preset_name(in, in->target, name, sizeof name);
-        switch (in->ask) {
-        case ASK_SAVE:
-            if (in->target == src) {
-                snprintf(l[0], sizeof l[0], "SAVE THE EDITS INTO A%03d?", in->target + 1);
-                snprintf(l[1], sizeof l[1], "%s", name);
-            } else if (!strcmp(name, EMPTY_PRESET)) {
-                preset_name(in, TP_EDIT_BUFFER, name, sizeof name);
-                snprintf(l[0], sizeof l[0], "SAVE INTO A%03d (EMPTY)?", in->target + 1);
-                snprintf(l[1], sizeof l[1], "AS %s", name);
-            } else {
-                snprintf(l[0], sizeof l[0], "REPLACE A%03d?", in->target + 1);
-                snprintf(l[1], sizeof l[1], "IT HOLDS %s", name);
-            }
+    case PUI_NAMING:
+        snprintf(l[0], sizeof l[0], "NAME FOR A%03d", in->target + 1);
+        snprintf(l[1], sizeof l[1], "%s", strlen(in->name) < TP_NAME_MAX ? "UP TO 25 LETTERS, DIGITS, SPACES"
+                                                                          : "25 CHARACTERS: AS LONG AS IT GETS");
+        snprintf(l[2], sizeof l[2], "%s%s", in->name, strlen(in->name) < TP_NAME_MAX ? "_" : "");
+        break;
+    case PUI_ASKSAVE:
+        save_name(in, name, sizeof name);
+        if (in->ask == ASK_RENAME) {
+            snprintf(l[0], sizeof l[0], "RENAME A%03d?", in->target + 1);
+            snprintf(l[1], sizeof l[1], "TO %s", name);
             break;
-        case ASK_LOAD:
+        }
+        snprintf(l[1], sizeof l[1], "AS %s", name);
+        if (in->target == src && edited(s))
+            snprintf(l[0], sizeof l[0], "SAVE THE EDITS INTO A%03d?", in->target + 1);
+        else if (is_empty(in, in->target))
+            snprintf(l[0], sizeof l[0], "SAVE INTO A%03d (EMPTY)?", in->target + 1);
+        else {
+            preset_name(in, in->target, name, sizeof name);
+            snprintf(l[0], sizeof l[0], "REPLACE A%03d %s?", in->target + 1, name);
+        }
+        break;
+    case PUI_CONFIRM:
+        if (in->ask == ASK_LOAD) {
             snprintf(l[0], sizeof l[0], "LOAD A%03d?", in->target + 1);
             snprintf(l[1], sizeof l[1], "THE EDITS TO A%03d ARE DROPPED", src + 1);
-            break;
-        case ASK_DISCARD:
+        } else {
             snprintf(l[0], sizeof l[0], "DISCARD THE EDITS?");
             snprintf(l[1], sizeof l[1], "A%03d RELOADS AS STORED", src + 1);
-            break;
         }
         break;
     default:
         if (now_ms() < in->notice_until)
-            memcpy(l, in->notice, sizeof l);
+            memcpy(l, in->notice, sizeof in->notice);
         else if (edited(s)) {
             snprintf(l[0], sizeof l[0], "A%03d HAS UNSAVED EDITS", src + 1);
             snprintf(l[1], sizeof l[1], "SAVE, SAVE AS OR DISCARD THEM");
@@ -311,30 +345,79 @@ static void tap(inst_t *in, const tp_state_t *s, int n)
         tp_core_select_preset(in->core, n);
 }
 
+/* A key of the name keyboard: a character goes at the end (no leading or double spaces), DEL takes the last one off. */
+static void type(inst_t *in, int key)
+{
+    size_t n = strlen(in->name);
+    if (in->ask != ASK_NAME)
+        return;
+    if (key == KEY_DEL && n)
+        in->name[n - 1] = 0;
+    else if (key == KEY_CLEAR)
+        in->name[0] = 0;
+    else if (key > ' ' && strchr(TP_NAME_CHARS, key) && n < TP_NAME_MAX)
+        in->name[n] = key, in->name[n + 1] = 0;
+    else if (key == ' ' && n && n < TP_NAME_MAX && in->name[n - 1] != ' ')
+        in->name[n] = ' ', in->name[n + 1] = 0;
+    in->ask_until = now_ms() + NAME_TIMEOUT_MS;
+}
+
 static void act(inst_t *in, const tp_state_t *s, int action)
 {
+    char name[TP_NAME_LEN];
     int src = source_preset(s);
+    size_t n;
     if (!s->connected || s->storing >= 0)
         return;
     switch (action) {
     case ACT_SAVE:
-        if (in->ask == ASK_NONE && edited(s))
+        if (in->ask == ASK_NONE && edited(s)) {
+            in->save_name[0] = 0;
             ask(in, s, ASK_SAVE, src);
+        }
         break;
     case ACT_SAVEAS:
-        if (in->ask == ASK_NONE)
+        if (in->ask == ASK_NONE) {
+            in->save_name[0] = 0;
             ask(in, s, ASK_PICK, src);
+        }
         break;
     case ACT_DISCARD:
         if (in->ask == ASK_NONE && edited(s))
             ask(in, s, ASK_DISCARD, src);
         break;
+    case ACT_RENAME:   /* with edits, renaming would store them too: SAVE or SAVE AS, then NAME..., is that */
+        if (in->ask == ASK_NONE && !edited(s)) {
+            in->save_name[0] = 0;
+            in->target = src;
+            preset_name(in, src, name, sizeof name);
+            ask_name(in, s, ASK_RENAME, name);
+        }
+        break;
+    case ACT_NAME:
+        if (in->ask == ASK_SAVE || in->ask == ASK_RENAME) {
+            save_name(in, name, sizeof name);
+            ask_name(in, s, in->ask, name);
+        }
+        break;
     case ACT_CANCEL:
-        set_ask(in, ASK_NONE);
+        if (in->ask == ASK_NAME && (in->back == ASK_SAVE || in->save_name[0]))
+            ask(in, s, in->back, in->target);   /* back to the question, with the name it had */
+        else
+            set_ask(in, ASK_NONE);
         break;
     case ACT_CONFIRM:
         switch (in->ask) {
-        case ASK_SAVE: tp_core_store(in->core, in->target); break;
+        case ASK_NAME:   /* OK */
+            for (n = strlen(in->name); n && in->name[n - 1] == ' '; n--)
+                in->name[n - 1] = 0;
+            if (!n)
+                return;   /* no name yet */
+            snprintf(in->save_name, sizeof in->save_name, "%s", in->name);
+            ask(in, s, in->back, in->target);
+            return;
+        case ASK_SAVE:
+        case ASK_RENAME: tp_core_store(in->core, in->target, in->save_name); break;
         case ASK_LOAD:
         case ASK_DISCARD: tp_core_select_preset(in->core, in->target); break;
         default: return;
@@ -357,7 +440,7 @@ static int value(const inst_t *in, const pp_param_t *pp, const tp_state_t *s)
     case PP_PARAM: v = s->params[pp->index]; break;
     case PP_SETUP: v = s->setup[pp->index]; break;
     case PP_BANK: return in->bank;
-    case PP_PUI: return pui(in, s);
+    case PP_PUI: return pp->index ? pui(in, s) == PUI_NAMING : pui(in, s);   /* 1: the name keyboard shows */
     }
     return v < 0 ? 0 : v;
 }
@@ -412,7 +495,7 @@ static int get_param(void *p, const char *key, char *buf, int len)
     int display = n > 8 && !strcmp(key + n - 8, "_display");
     int on = n > 3 && !strcmp(key + n - 3, "_on");   /* a list tile: lit or not */
     const pp_param_t *pp = find(key, display ? n - 8 : on ? n - 3 : n);
-    if (!pp || pp->kind == PP_TRIGGER || pp->kind == PP_ACTION || (on && pp->kind != PP_SLOT))
+    if (!pp || pp->kind == PP_TRIGGER || pp->kind == PP_ACTION || pp->kind == PP_KEY || (on && pp->kind != PP_SLOT))
         return 0;   /* "state" included: nothing to save */
     tp_core_state(in->core, &s);
     tick(in, &s);
@@ -466,10 +549,14 @@ static void set_param(void *p, const char *key, const char *val)
         }
         break;
     case PP_ACTION:
+    case PP_KEY:
         if (v) {   /* not the trigger falling back to 0 */
             tp_core_state(in->core, &s);
             tick(in, &s);
-            act(in, &s, pp->index);
+            if (pp->kind == PP_KEY)
+                type(in, pp->index);
+            else
+                act(in, &s, pp->index);
         }
         break;
     }

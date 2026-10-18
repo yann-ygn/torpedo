@@ -52,6 +52,7 @@ struct tp_core {
     unsigned revision;   /* +1 whenever changes are noted */
     int storing, store_status, store_slot;   /* see tp_state_t */
     unsigned store_seq;
+    char store_name[TP_NAME_MAX + 1];   /* the name the queued store gives the buffer first, or "" */
     bank_t cabs, irs;
     name_t names[TP_PRESETS + 1];   /* [TP_EDIT_BUFFER]: the edit buffer */
     /* worker only */
@@ -288,22 +289,55 @@ static int is_stored(const uint8_t *p, void *ctx)   /* `03 n arcade name`, or `0
     return (p[0] == TP_MSG_NAME && p[1] == n) || (p[0] == TP_MSG_SETUP && p[1] == TP_SETUP_PRESET && p[2] == n);
 }
 
-/* device.py save without a rename: `04 73 n` stores the edit buffer under its own name. Whether it took is checked by
- * reading the names back (the stored one must be the buffer's), also when the unit didn't answer in time. */
+static int is_renamed(const uint8_t *p, void *ctx)   /* the echo: `03 80 arcade name` */
+{
+    const char *name = ctx;
+    size_t n = strlen(name);
+    return p[0] == TP_MSG_NAME && p[1] == TP_EDIT_BUFFER && !memcmp(p + 3, name, n) && !p[3 + n];
+}
+
+/* device.py rename_buffer: `03 80 name`, echoed; renaming it to the name it has gets no answer, so it isn't sent. */
+static int rename_buffer(tp_core_t *c, const char *name)
+{
+    uint8_t cmd[2 + TP_NAME_MAX] = {TP_MSG_NAME, TP_EDIT_BUFFER};
+    size_t n = strlen(name);
+    pthread_mutex_lock(&c->lock);
+    int same = !strcmp(c->names[TP_EDIT_BUFFER].name, name);
+    pthread_mutex_unlock(&c->lock);
+    if (same)
+        return 0;
+    memcpy(cmd + 2, name, n);
+    return tp_exchange(&c->dev, cmd, 2 + n, is_renamed, (void *)name);
+}
+
+/* device.py save: the buffer renamed if asked (and only stored once the unit said so), then `04 73 n` stores it. Whether
+ * it took is checked by reading the names back (the stored one must be the buffer's), also when the unit didn't
+ * answer in time. */
 static int send_store(tp_core_t *c, int n)
 {
     tp_dev_t *d = &c->dev;
-    const uint8_t cmd[] = {TP_MSG_QUERY, TP_QUERY_STORE, n};
-    d->timeout_ms = TP_STORE_TIMEOUT_MS;
-    int r = tp_exchange(d, cmd, sizeof cmd, is_stored, &n);
-    int lost = r < 0 && errno != ETIMEDOUT;   /* unplugged: the connection is dropped, the store counts as failed */
-    d->timeout_ms = TP_TIMEOUT_MS;
+    char name[TP_NAME_MAX + 1];
+    int sent = 0, r = 0, lost = 0;   /* lost: unplugged, the connection is dropped and the store counts as failed */
+    pthread_mutex_lock(&c->lock);
+    memcpy(name, c->store_name, sizeof name);
+    pthread_mutex_unlock(&c->lock);
+    if (name[0] && (r = rename_buffer(c, name)) < 0)
+        lost = errno != ETIMEDOUT;
+    if (!r) {
+        const uint8_t cmd[] = {TP_MSG_QUERY, TP_QUERY_STORE, n};
+        sent = 1;
+        d->timeout_ms = TP_STORE_TIMEOUT_MS;
+        if ((r = tp_exchange(d, cmd, sizeof cmd, is_stored, &n)) < 0)
+            lost = errno != ETIMEDOUT;
+        d->timeout_ms = TP_TIMEOUT_MS;
+    }
     if (!lost) {
         r = tp_read_setup(d) < 0 || read_names(c) < 0 ? -1 : 0;
         lost = r < 0 && errno != ETIMEDOUT;
     }
     pthread_mutex_lock(&c->lock);
-    int ok = r == 0 && !strcmp(c->names[n].name, c->names[TP_EDIT_BUFFER].name);
+    int ok = sent && r == 0 && !strcmp(c->names[n].name, c->names[TP_EDIT_BUFFER].name)
+             && (!name[0] || !strcmp(c->names[n].name, name));
     c->storing = -1;
     c->store_status = ok ? TP_STORE_OK : TP_STORE_FAILED;
     c->store_slot = n;
@@ -639,15 +673,22 @@ int tp_core_select_ir(tp_core_t *c, int slot, int ir)
     return 0;
 }
 
-int tp_core_store(tp_core_t *c, int n)
+static int valid_name(const char *s)   /* protocol.py check_name, without uppercasing it */
+{
+    size_t n = strlen(s);
+    return n >= 1 && n <= TP_NAME_MAX && strspn(s, TP_NAME_CHARS) == n;
+}
+
+int tp_core_store(tp_core_t *c, int n, const char *name)
 {
     pthread_mutex_lock(&c->lock);
     if (!c->connected)
         return fail(c, ENOTCONN);
-    if (n < 0 || n >= TP_PRESETS)
+    if (n < 0 || n >= TP_PRESETS || (name && name[0] && !valid_name(name)))
         return fail(c, EINVAL);
     if (c->storing >= 0)
         return fail(c, EBUSY);
+    snprintf(c->store_name, sizeof c->store_name, "%s", name ? name : "");
     c->storing = n;   /* from now on until it ends: the screen says so */
     c->revision++;
     enqueue(c, OP_STORE, n, n);

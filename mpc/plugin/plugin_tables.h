@@ -2,14 +2,14 @@
 #pragma once
 #include <stdint.h>
 
-enum { PP_VIEW, PP_PRESET, PP_PARAM, PP_SETUP, PP_TRIGGER, PP_SLOT, PP_BANK, PP_PUI, PP_MSG, PP_ACTION };
+enum { PP_VIEW, PP_PRESET, PP_PARAM, PP_SETUP, PP_TRIGGER, PP_SLOT, PP_BANK, PP_PUI, PP_MSG, PP_ACTION, PP_KEY };
 enum { PP_LIST_NONE, PP_LIST_CAB, PP_LIST_MIC, PP_LIST_IR };
 
 typedef struct {
     const char *key;             /* params.json */
     uint8_t kind;                /* PP_* */
     uint8_t index;               /* PP_PARAM: tp_params index, PP_SETUP: tp_setup_names index, PP_SLOT: tile,
-                                  PP_MSG: line, PP_ACTION: engine.c ACT_* */
+                                  PP_MSG: line, PP_ACTION: engine.c ACT_*, PP_KEY: character or engine.c KEY_* */
     uint8_t list;                /* value text from the unit's banks: PP_LIST_* */
     uint8_t eq_custom;           /* only meaningful in custom EQ mode, else otherwise[EQ_MODE] */
     const char *const *text;     /* value text per value, or NULL */
@@ -17,5 +17,5 @@ typedef struct {
     const char *otherwise[2];    /* the text outside custom EQ mode (guitar, bass) */
 } pp_param_t;
 
-#define PP_NPARAMS 89
+#define PP_NPARAMS 132
 extern const pp_param_t pp_params[PP_NPARAMS];

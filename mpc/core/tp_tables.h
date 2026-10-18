@@ -38,6 +38,8 @@
 #define TP_ARCADE 1
 #define TP_IR 2
 #define TP_IR_BANK 1
+#define TP_NAME_MAX 25
+#define TP_NAME_CHARS " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"  /* what a preset name may hold */
 
 #define TP_NPARAMS 51
 enum {

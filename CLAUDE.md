@@ -110,9 +110,15 @@ reference implementation.
   current preset), SAVE / SAVE AS / DISCARD. Loading over edits, discarding and saving are each a
   CONFIRM/CANCEL question (`engine.c` state machine; the `pui` param drives the buttons'
   `when=`), dropped after 20 s or when the unit changes under it. SAVE AS lights the empty
-  ("USER") slots; the name is kept (no text entry on MPC). A save is `tp_core_store`
-  (`04 73 n`, after the queued writes, names re-read to check it): the only flash write the C
-  side exports. Tested against the emulator (tests/test_mpc_core.py, test_mpc_plugin.py).
+  ("USER") slots. A save is `tp_core_store` (`04 73 n`, after the queued writes, names re-read
+  to check it): the only flash write the C side exports. Checked on the Key 37.
+  **Names (2026-10-18):** MPC has no text entry a VST2 skin can call (only "menu overlay", empty
+  for VST2), so the PRESET tab has its own keyboard (A–Z, 0–9, space, DEL, CLEAR: `k_*`
+  triggers; `pkb` swaps it for the tiles). A save question has NAME... (OK goes back to the
+  question), RENAME... (no unsaved edits) starts with it. `tp_core_store(c, n, name)` renames
+  the edit buffer first (`03 80`, skipped when the name is unchanged: no reply) and only stores
+  once that is echoed; names are protocol.py's NAME_CHARS / NAME_MAX (exported by gen_tables).
+  Tested against the emulator (tests/test_mpc_core.py, test_mpc_plugin.py).
 
 ## Safety
 

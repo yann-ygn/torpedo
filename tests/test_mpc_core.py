@@ -14,8 +14,8 @@ import pytest
 
 from fakebridge import FakeBridge
 from torpedo.fake import A001, CABS, ML_IRS, PRESET_NAMES, SETUP_VALUES, FakeHid
-from torpedo.protocol import (EDIT_BUFFER, MSG_PARAM, MSG_QUERY, PARAM_BY_NAME, PARAMS, QUERY_SETUP,
-                              SETUP)
+from torpedo.protocol import (EDIT_BUFFER, MSG_NAME, MSG_PARAM, MSG_QUERY, PARAM_BY_NAME, PARAMS,
+                              QUERY_SETUP, SETUP)
 
 MPC = Path(__file__).resolve().parent.parent / "mpc"
 pytestmark = pytest.mark.skipif(
@@ -298,6 +298,29 @@ def test_store_is_one_at_a_time_and_after_what_was_queued(ctl, bridge):
     assert bridge.fake.stores == [80]
     assert bridge.fake.presets[80][P["ARCADE_CONTOUR"]] == 30  # the edit queued before it was stored with it
     bridge.fake.stores.clear()
+
+
+def renames(bridge) -> list[str]:
+    return [b[2:].split(bytes(1))[0].decode() for b in bridge.fake.sent if b[:2] == bytes([MSG_NAME, EDIT_BUFFER])]
+
+
+def test_store_under_a_new_name_renames_the_buffer_first(ctl, bridge):
+    ctl.cmd("store 80 MY NEW SOUND 2")
+    assert stored(ctl)["status"] == 1
+    assert renames(bridge) == ["MY NEW SOUND 2"]
+    assert bridge.fake.stores == [80] and bridge.fake.names[80] == "MY NEW SOUND 2"
+    assert ctl.cmd("names")[80] == "name 80 1 MY NEW SOUND 2"
+    ctl.cmd("store 81 MY NEW SOUND 2")  # the name it already has: the unit wouldn't answer a rename
+    assert stored(ctl)["status"] == 1
+    assert renames(bridge) == ["MY NEW SOUND 2"] and bridge.fake.names[81] == "MY NEW SOUND 2"
+    bridge.fake.stores.clear()
+
+
+def test_store_refuses_names_the_unit_does_not_take(ctl, bridge):
+    for bad in ("lower case", "TWENTY SIX CHARACTERS LONG", "DASH-ED"):
+        with pytest.raises(CtlError, match="Invalid argument"):
+            ctl.cmd(f"store 80 {bad}")
+    assert not renames(bridge) and not bridge.fake.stores
 
 
 def test_store_refused_up_front(ctl, bridge):

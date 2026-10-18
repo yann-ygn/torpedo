@@ -250,7 +250,7 @@ def test_save_stores_the_edits_into_their_preset_once_confirmed(host, bridge):
     edit(host)
     assert message(host) == ("A001 HAS UNSAVED EDITS", "SAVE, SAVE AS OR DISCARD THEM")
     press(host, "p_save")
-    assert message(host) == ("SAVE THE EDITS INTO A001?", "BDELUXE 1 RBN")
+    assert message(host) == ("SAVE THE EDITS INTO A001?", "AS BDELUXE 1 RBN")
     assert not bridge.fake.stores
     press(host, "p_confirm")
     wait_text(host, "pmsg", "SAVED A001")
@@ -280,7 +280,7 @@ def test_save_as_lights_the_empty_presets_and_stores_into_the_one_tapped(host, b
 def test_replacing_a_preset_says_what_it_holds_and_can_be_cancelled(host, bridge):
     press(host, "p_saveas")
     press(host, "slot_2")
-    assert message(host) == ("REPLACE A002?", "IT HOLDS BDELUXE 1 DYN421")
+    assert message(host) == ("REPLACE A002 BDELUXE 1 DYN421?", "AS BDELUXE 1 RBN")
     press(host, "p_cancel")
     assert host.text("pui") == "CLEAN" and host.get("slot_1")[0] == 1
     press(host, "p_confirm")  # nothing left to confirm
@@ -307,6 +307,75 @@ def test_a_question_goes_away_when_the_unit_changes_under_it(host, bridge):
     assert message(host) == ("CANCELLED", "THE UNIT CHANGED MEANWHILE")
     press(host, "p_confirm")
     assert bridge.fake.setup[3] == 2
+
+
+
+def type_name(host, text: str):
+    for c in text:
+        host.cmd(f"set {INDEX['k_space' if c == ' ' else 'k_' + c.lower()]} 1")
+    host.settle()
+
+
+def test_rename_types_a_name_then_asks_before_storing(host, bridge):
+    press(host, "p_rename")
+    assert host.text("pui") == "NAMING"
+    assert (*message(host), host.text("pname")) == ("NAME FOR A001", "UP TO 25 LETTERS, DIGITS, SPACES",
+                                                    "BDELUXE 1 RBN_")
+    press(host, "k_clear")
+    type_name(host, "MY TONX")
+    press(host, "k_del")
+    type_name(host, "E")
+    assert host.text("pname") == "MY TONE_"
+    press(host, "p_confirm")  # OK
+    assert host.text("pui") == "ASKSAVE" and message(host) == ("RENAME A001?", "TO MY TONE")
+    assert not bridge.fake.stores
+    press(host, "p_confirm")
+    wait_text(host, "pmsg", "SAVED A001")
+    assert bridge.fake.stores == [0] and bridge.fake.names[0] == "MY TONE"
+    assert host.text("slot_1") == "A001 MY TONE" and host.text("preset") == "A001 MY TONE"
+    bridge.fake.stores.clear()
+
+
+def test_a_save_question_can_change_the_name(host, bridge):
+    press(host, "p_saveas")
+    host.set("bank", 4)
+    host.settle()
+    press(host, "slot_12")
+    press(host, "p_name")
+    assert host.text("pname") == "BDELUXE 1 RBN_"  # the name it would have been saved under
+    type_name(host, " 2")
+    press(host, "p_confirm")  # OK: back to the question
+    assert message(host) == ("SAVE INTO A076 (EMPTY)?", "AS BDELUXE 1 RBN 2")
+    press(host, "p_name")
+    type_name(host, "X")
+    press(host, "p_cancel")  # back to the question, with the name it had
+    assert message(host) == ("SAVE INTO A076 (EMPTY)?", "AS BDELUXE 1 RBN 2")
+    press(host, "p_confirm")
+    wait_text(host, "pmsg", "SAVED A076")
+    assert bridge.fake.stores == [75] and bridge.fake.names[75] == "BDELUXE 1 RBN 2"
+    assert bridge.fake.names[0] == "BDELUXE 1 RBN"
+    bridge.fake.stores.clear()
+
+
+def test_the_keyboard_keeps_to_what_a_name_may_be(host, bridge):
+    press(host, "p_rename")
+    press(host, "k_clear")
+    type_name(host, "  A  B")  # no leading or double spaces
+    assert host.text("pname") == "A B_"
+    type_name(host, "C" * 30)
+    assert host.text("pname") == "A B" + "C" * 22  # 25 at most, no cursor once full
+    assert host.text("pmsg2") == "25 CHARACTERS: AS LONG AS IT GETS"
+    press(host, "k_clear")
+    press(host, "p_confirm")  # OK with no name: nothing
+    assert host.text("pui") == "NAMING"
+    press(host, "p_cancel")  # a rename's keyboard: back to the page
+    assert host.text("pui") == "CLEAN" and not bridge.fake.stores
+
+
+def test_rename_needs_no_unsaved_edits(host, bridge):
+    edit(host)
+    press(host, "p_rename")  # it would store the edits too: SAVE, then NAME..., does that
+    assert host.text("pui") == "EDITED"
 
 
 def test_choosers_step_through_the_units_lists(host, bridge):

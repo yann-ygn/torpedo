@@ -3,7 +3,8 @@
  * ("changed ..."). Each command ends with "ok", "end" (after a listing) or "error <reason>".
  *   state | meters | cabs | irs | names
  *   set NAME V | setup NAME V | preset N | cab N | ir SLOT N     queue a change
- *   store N              queue storing the current sound into preset N (a flash write); `storing` prints how it stands
+ *   store N [NAME]       queue storing the current sound into preset N (a flash write), renamed NAME (the rest of
+ *                        the line) if given; `storing` prints how it stands
  *   sweep NAME FROM TO   set FROM..TO as fast as possible, from a thread of its own
  *   sync [MS]            wait until the queued changes are handled
  *   connected [MS]       wait for the connection
@@ -132,8 +133,22 @@ static void print_state(void)
     out("end\n");
 }
 
+/* The text after the first k words of s, without the line end ("" if none). */
+static char *after_words(char *s, int k)
+{
+    s += strspn(s, " \t");
+    for (; k > 0; k--) {
+        s += strcspn(s, " \t\r\n");
+        s += strspn(s, " \t");
+    }
+    s[strcspn(s, "\r\n")] = 0;
+    return s;
+}
+
 static void command(char *line)
 {
+    char raw[256];
+    snprintf(raw, sizeof raw, "%s", line);
     char *w[5] = {0};
     int n = 0;
     for (char *t = strtok(line, " \t\r\n"); t && n < 5; t = strtok(NULL, " \t\r\n"))
@@ -193,8 +208,8 @@ static void command(char *line)
         result(tp_core_select_cab(core, a1));
     else if (!strcmp(cmd, "ir") && n == 3)
         result(tp_core_select_ir(core, a1, a2));
-    else if (!strcmp(cmd, "store") && n == 2)
-        result(tp_core_store(core, a1));
+    else if (!strcmp(cmd, "store") && n >= 2)
+        result(tp_core_store(core, a1, after_words(raw, 2)));
     else if (!strcmp(cmd, "sweep") && n == 4) {
         struct sweep s = {param_index(w[1]), a2, atoi(w[3]), 0};
         pthread_t t;
