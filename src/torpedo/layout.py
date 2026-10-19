@@ -21,7 +21,8 @@ SLIDER, CHOICE, CAB, MIC, IR_SLOT = "slider", "choice", "cab", "mic", "ir"
 # SIMUAMP_MODELE=5 / REVERB_ROOM=0 and Remote shows "PP EL34" / "Studio A".
 AMPS = ("SE 6L6", "SE EL34", "SE EL84", "SE KT88", "PP 6L6", "PP EL34", "PP EL84", "PP KT88")
 ROOMS = ("Studio A", "Studio B", "Basement", "Loft", "Hall A", "Hall B", "Crypt", "Cathedral")
-EQ_MODES = ("guitar", "bass", "custom")  # 0 = guitar on A001; ARCADE_GUITARBASS -> 0/1 (?)
+EQ_MODES = ("guitar", "bass", "custom")  # 0 = guitar on A001; ARCADE_GUITARBASS 0/1 the same (Remote: a bass
+# arcade preset switched to simulation shows the bass bands, 2026-10-19)
 EQ_CUSTOM = 2
 EQ_BANDS = {0: ("120 Hz", "360 Hz", "800 Hz", "2 kHz", "6 kHz"),
             1: ("50 Hz", "120 Hz", "360 Hz", "800 Hz", "4 kHz")}
@@ -64,7 +65,11 @@ def eq_freq(lo: int, hi: int) -> Callable[[int], str]:
 
 
 def eq_gain(v: int) -> str:
-    return f"{v - 20:+d}"  # 20 = flat; the step in dB is unknown
+    return f"{v - 20:+d} dB" if v != 20 else "0 dB"  # -20..+20 dB, as Remote shows them
+
+
+def db(v: int) -> str:
+    return f"{v} dB"  # amp volume, 0..30 dB as Remote shows it
 
 
 def percent_127(v: int) -> str:
@@ -75,12 +80,16 @@ def level_db(v: int) -> str:
     return f"{v - 95:+d} dB"  # every 0..107 level: -95 dB .. +12 dB, as the unit shows them
 
 
+def percent_44(v: int) -> str:
+    return f"{round(v * 100 / 44)}%"  # arcade tone and distance, as Remote shows them
+
+
 def percent_40(v: int) -> str:
     return f"{v * 2.5:g}%"  # ARCADE_CONTOUR, as Remote shows it
 
 
 def power_amp(v: int) -> str:
-    return str(v) if v else "off"  # (?) every factory arcade preset has 0 with SIMUAMP off; Remote's knob says COLD/OFF
+    return f"{round(v * 100 / 30)}%" if v else "off"  # Remote: off at 0, then 3% (cold) .. 100% (hot)
 
 
 @dataclass(frozen=True)
@@ -130,7 +139,7 @@ def pair(label: str, a: str, b: str, **kw) -> Row:
 
 
 POWER_AMP = Section("POWER AMP", on_off("SIMUAMP"), Control("SIMUAMP_MODELE", CHOICE, AMPS), rows=(
-    single("Volume", "SIMUAMP_GAIN"),
+    single("Volume", "SIMUAMP_GAIN", fmt=db),
     single("Depth", "SIMUAMP_DEPTH", fmt=percent_127),
     single("Presence", "SIMUAMP_CONTOUR", fmt=percent_127),
     single("Character", "SIMUAMP_CHARACTER", kind=CHOICE, choices=CHARACTER),
@@ -145,7 +154,7 @@ EQ = Section("EQ", on_off("EQ"), Control("EQ_MODE", CHOICE, EQ_MODES), ("Freq", 
 ))
 
 REVERB = Section("REVERB", on_off("REVERB"), Control("REVERB_ROOM", CHOICE, ROOMS), rows=(
-    single("Dry/wet", "REVERB_L_DRYWET"),
+    single("Dry/wet", "REVERB_L_DRYWET", fmt=percent_127),
 ))
 
 PRESET_LEVEL = Section("PRESET", rows=(single("Level", "PRESET_LEVEL", fmt=level_db),))
@@ -192,8 +201,8 @@ ARCADE_LAYOUT = (
     )),
     Section("ARCADE", rows=(
         single("Power amp", "ARCADE_POWERAMP", fmt=power_amp, ends=("cold", "hot")),
-        single("Tone", "ARCADE_TONE", ends=("dark", "bright")),
-        single("Distance", "ARCADE_DISTANCE", ends=("close", "far")),
+        single("Tone", "ARCADE_TONE", fmt=percent_44, ends=("dark", "bright")),
+        single("Distance", "ARCADE_DISTANCE", fmt=percent_44, ends=("close", "far")),
         single("Contour", "ARCADE_CONTOUR", fmt=percent_40, ends=("vintage", "modern")),
     )),
     Section("ROOM", head=Control("REVERB_ROOM", CHOICE, ROOMS)),

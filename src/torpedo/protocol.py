@@ -64,7 +64,7 @@ QUERY_COMMIT = 0x0E  # 04 0e after an IR upload or delete, or a QUERY_CLEAR; ans
 IR_ACK = 0x70  # device: 04 70 after the headers and after each 6f
 STATUS = 0x0D  # device: 04 0d ..., 04 0d 00 when done
 IR_BANK = 1
-NAME_MAX = 25  # longest factory name; the real limit is unknown
+NAME_MAX = 31  # what Remote's rename box takes (2026-10-19)
 NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ")  # seen in factory names
 
 

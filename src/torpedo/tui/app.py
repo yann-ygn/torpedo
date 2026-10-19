@@ -16,7 +16,7 @@ from textual.widgets.option_list import Option
 from ..device import Info, Torpedo
 from ..layout import (ARCADE_LAYOUT, CAB, IR_LAYOUT, IR_SLOT, LAYOUTS, MIC, MODE_CONTROL, MODES,
                       SIMULATION_LAYOUT, SLIDER, Control, level_db)
-from ..protocol import (EDIT_BUFFER, MSG_PARAM, PARAMS, PRESET_MODE, PRESETS, SETUP_PRESET,
+from ..protocol import (EDIT_BUFFER, MSG_PARAM, NAME_MAX, PARAMS, PRESET_MODE, PRESETS, SETUP_PRESET,
                         SETUP_OPTIONS, SETUP_PRESET_SOURCE, Cab, Meters, PresetName, check_name,
                         preset_index, preset_name)
 from .editor import Editor
@@ -147,7 +147,7 @@ class PresetList(Vertical):
             current = p.index == state.source
             text = Text(">" if current else " ", style="bold")
             text.append(f"{p.label} ")
-            text.append(f"{p.name:<25}", style="dim" if p.empty else "bold" if current else "")
+            text.append(f"{p.name:<{NAME_MAX}}", style="dim" if p.empty else "bold" if current else "")
             if current and state.edited:
                 text.append(" *", style="bold yellow")
             options.add_option(Option(text, id=str(p.index)))

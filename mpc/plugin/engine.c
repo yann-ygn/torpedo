@@ -321,8 +321,10 @@ static int message(inst_t *in, const tp_state_t *s, int line, char *buf, int len
         break;
     case PUI_NAMING:
         snprintf(l[0], sizeof l[0], "NAME FOR %s", preset(in, in->target).label);
-        snprintf(l[1], sizeof l[1], "%s", strlen(in->name) < TP_NAME_MAX ? "UP TO 25 LETTERS, DIGITS, SPACES"
-                                                                          : "25 CHARACTERS: AS LONG AS IT GETS");
+        if (strlen(in->name) < TP_NAME_MAX)
+            snprintf(l[1], sizeof l[1], "UP TO %d LETTERS, DIGITS, SPACES", TP_NAME_MAX);
+        else
+            snprintf(l[1], sizeof l[1], "%d CHARACTERS: AS LONG AS IT GETS", TP_NAME_MAX);
         snprintf(l[2], sizeof l[2], "%s%s", in->name, strlen(in->name) < TP_NAME_MAX ? "_" : "");
         break;
     case PUI_ASKSAVE:

@@ -46,7 +46,8 @@
    "name": "Amp volume",
    "min": 0,
    "max": 30,
-   "display": "int"
+   "display": "int",
+   "dynamic_display": true
   },
   {
    "key": "simuamp_contour",
@@ -228,7 +229,8 @@
    "name": "Reverb dry/wet",
    "min": 0,
    "max": 127,
-   "display": "int"
+   "display": "int",
+   "dynamic_display": true
   },
   {
    "key": "arcade_guitarbass",
@@ -251,14 +253,16 @@
    "name": "Arcade distance",
    "min": 0,
    "max": 44,
-   "display": "int"
+   "display": "int",
+   "dynamic_display": true
   },
   {
    "key": "arcade_tone",
    "name": "Arcade tone",
    "min": 0,
    "max": 44,
-   "display": "int"
+   "display": "int",
+   "dynamic_display": true
   },
   {
    "key": "arcade_contour",

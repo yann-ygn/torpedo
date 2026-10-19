@@ -207,7 +207,7 @@ def test_save_keeping_the_name_skips_the_rename(torpedo):
 def test_save_refuses_to_overwrite(torpedo):
     with pytest.raises(ValueError, match="holds"):
         torpedo.save(3)
-    for bad in ("", "x" * 26, "lower-case!"):
+    for bad in ("", "x" * 32, "lower-case!"):
         with pytest.raises(ValueError):
             torpedo.save(75, bad)
     with pytest.raises(ValueError):

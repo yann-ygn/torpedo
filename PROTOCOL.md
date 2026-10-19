@@ -152,8 +152,9 @@ Torpedo Remote has a single "save" (renaming = saving under a new name):
    `0c 05 00`.
 
 Seen: "TESTCAP2" then "TESTCAP" stored into A076 (an empty "USER" slot).
-Factory names use A–Z, 0–9 and spaces, up to 25 characters; the real limits
-aren't known, so `torpedo` sticks to that.
+Factory names use A–Z, 0–9 and spaces, up to 25 characters. Remote's rename
+box takes up to 31 (2026-10-19), so `torpedo` allows that, still A–Z, 0–9 and
+spaces only.
 
 SETUP_PRESET is n while preset n is loaded unmodified and 0x80 once it is
 edited, with the source in SETUP_PRESET_SOURCE (editing A067 gave `0c 03 80`,
@@ -314,8 +315,8 @@ those of preset A001.
 |---|---|---|---|
 | 00 | SIMUAMP | 0 | amp sim on/off |
 | 01 | SIMUAMP_MODELE | 5 | |
-| 02 | SIMUAMP_GAIN | 0 | 0..30 |
-| 03 | SIMUAMP_CONTOUR | 127 | presence in the .top files *(?)* |
+| 02 | SIMUAMP_GAIN | 0 | volume, 0..30 = 0..30 dB (Remote) |
+| 03 | SIMUAMP_CONTOUR | 127 | presence (Remote), 0..100% |
 | 04 | SIMUAMP_DEPTH | 127 | |
 | 05 | SIMUAMP_CHARACTER | 1 | |
 | 06 | SIMUHP | 1 | cab sim on/off |
@@ -331,15 +332,15 @@ those of preset A001.
 | 10 | SIMUHP_POSITION | 1 | front/back |
 | 11 | EQ | 1 | |
 | 12 | EQ_MODE | 0 | |
-| 13–17 | EQ_L_GAIN0..4 | 21 20 20 20 21 | 20 = flat *(?)* |
+| 13–17 | EQ_L_GAIN0..4 | 21 20 20 20 21 | 0..40 = -20..+20 dB, 20 = flat (Remote) |
 | 18 | PRESET_LEVEL | 87 | 0..107 |
 | 19 | REVERB | 1 | |
 | 1A | REVERB_ROOM | 0 | |
-| 1B | REVERB_L_DRYWET | 1 | |
+| 1B | REVERB_L_DRYWET | 1 | 0..127 = 0..100% (Remote) |
 | 1C | ARCADE_GUITARBASS | 0 | |
-| 1D | ARCADE_POWERAMP | 0 | knob 0..30; 2 after "power amp on" (also set SIMUAMP=1, GAIN=2) |
-| 1E | ARCADE_DISTANCE | 0 | |
-| 1F | ARCADE_TONE | 38 | |
+| 1D | ARCADE_POWERAMP | 0 | knob 0..30: Remote shows off at 0, then 3% (cold) .. 100% (hot); 2 after "power amp on" (also set SIMUAMP=1, GAIN=2) |
+| 1E | ARCADE_DISTANCE | 0 | 0..44 = 0..100% (Remote) |
+| 1F | ARCADE_TONE | 38 | 0..44 = 0..100% (Remote) |
 | 20 | ARCADE_CONTOUR | 21 | 0..40, UI % = val × 2.5 (21 = 52%, 22 = 55%) |
 | 21 | ARCADE_LEVEL | 87 | |
 | 22 | PRESET_MODE | 1 | 0 = simulation, 1 = arcade, 2 = IR |

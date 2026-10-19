@@ -406,7 +406,7 @@ def test_clear_refuses_the_preset_with_unsaved_edits_and_waits_its_turn(ctl, bri
 
 
 def test_store_refuses_names_the_unit_does_not_take(ctl, bridge):
-    for bad in ("lower case", "TWENTY SIX CHARACTERS LONG", "DASH-ED"):
+    for bad in ("lower case", "THIRTY TWO CHARACTERS IS TOO LONG", "DASH-ED"):
         with pytest.raises(CtlError, match="Invalid argument"):
             ctl.cmd(f"store 80 {bad}")
     assert not renames(bridge) and not bridge.fake.stores

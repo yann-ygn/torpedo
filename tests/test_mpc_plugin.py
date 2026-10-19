@@ -386,7 +386,7 @@ def test_clear_lights_what_can_be_cleared_and_asks_first(host, bridge):
 def test_rename_types_a_name_then_asks_before_storing(host, bridge):
     press(host, "p_rename")
     assert host.text("pui") == "NAMING"
-    assert (*message(host), host.text("pname")) == ("NAME FOR A001", "UP TO 25 LETTERS, DIGITS, SPACES",
+    assert (*message(host), host.text("pname")) == ("NAME FOR A001", "UP TO 31 LETTERS, DIGITS, SPACES",
                                                     "BDELUXE 1 RBN_")
     press(host, "k_clear")
     type_name(host, "MY TONX")
@@ -446,9 +446,9 @@ def test_the_keyboard_keeps_to_what_a_name_may_be(host, bridge):
     press(host, "k_clear")
     type_name(host, "  A  B")  # no leading or double spaces
     assert host.text("pname") == "A B_"
-    type_name(host, "C" * 30)
-    assert host.text("pname") == "A B" + "C" * 22  # 25 at most, no cursor once full
-    assert host.text("pmsg2") == "25 CHARACTERS: AS LONG AS IT GETS"
+    type_name(host, "C" * 35)
+    assert host.text("pname") == "A B" + "C" * 28  # 31 at most, no cursor once full
+    assert host.text("pmsg2") == "31 CHARACTERS: AS LONG AS IT GETS"
     press(host, "k_clear")
     press(host, "p_confirm")  # OK with no name: nothing
     assert host.text("pui") == "NAMING"
