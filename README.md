@@ -16,18 +16,18 @@ builds two front ends on it:
   global settings.
 
 > [!NOTE]
-> This is ultra niche. It has only been tested with **one Torpedo Live on
+> This is really niche. It has only been tested with **a Torpedo Live on
 > firmware 4.23** and **an MPC Key 37 on MPC OS 3.9.1**. Other MPC OS devices
 > run the same program and may work, but nobody has tried. Not affiliated with
 > Two notes Audio Engineering or Akai Professional.
 
 ## MPC plugin
 
-| PRESET | AMP | EQ |
-|---|---|---|
-| ![PRESET tab](docs/img/mpc-preset.png) | ![AMP tab](docs/img/mpc-amp.png) | ![EQ tab](docs/img/mpc-eq.png) |
-
-<!-- confirm: placeholders until screenshots are grabbed from the Key 37 (same file names) -->
+| PRESET | AMP |
+|---|---|
+| ![PRESET tab](docs/img/mpc-preset.png) | ![AMP tab](docs/img/mpc-amp.png) |
+| **CAB** | **EQ** |
+| ![CAB tab](docs/img/mpc-cab.png) | ![EQ tab](docs/img/mpc-eq.png) |
 
 The plugin is a silent instrument that you add to a track like any other
 plugin. Audio still goes through the Torpedo as usual; the plugin only talks to
@@ -75,8 +75,7 @@ sh mpc-store.sh -t /storage/Synths sync
 ```
 
 Plug the Torpedo into a USB host port of the MPC, add **Torpedo Control** to a
-track <!-- confirm: how it shows in MPC's plugin browser (vendor "ygn") --> and
-the page switches from "not connected" to the current preset.
+track and the page switches from "not connected" to the current preset.
 
 ## Linux CLI and TUI
 
@@ -147,7 +146,7 @@ the unit's LEDs. Other tabs: IRs, Preset files, Setup and Backup.
 
 ### IRs, preset files and backups
 
-- **IRs** live in bank 1 after the 86 ML IRs. `ir-put` does what Remote does
+- **IRs** live in bank 1. `ir-put` does what Remote does
   to a file: resampling to 48 kHz, alignment (`original`, `min-latency` or
   `min-phase`), cut or pad to 20 or 40 ms and peak normalization, in plain
   Python. Deleting an IR moves the following ones down a place, so presets
@@ -173,6 +172,41 @@ unknown, and it may accept out-of-range values.
 `src/torpedo/protocol.py` holds the tables; the MPC side's C tables are
 generated from it (`mpc/gen_tables.py`), as is the plugin's parameter list
 (`mpc/plugin/gen_plugin.py`, from `src/torpedo/layout.py`).
+
+### Trying it on another unit
+
+Everything here comes from one unit on one firmware. If yours differs (other
+firmware, or another Torpedo), the tools in `tools/` are how the protocol was
+worked out, and how to check yours against `PROTOCOL.md`. Run them with
+`uv run python tools/<name>.py`.
+
+1. **Read only first.** `readtest.py` prints the unit's info and all 51
+   parameters of the current preset; on an MPC, `torpedo-probe` (from
+   `make -C mpc arm`) does the same round trip. Both open USB ID `0483:a334`,
+   the Torpedo Live's (like the udev rule in `linux/`): another model will
+   have its own. If the parameter count or values look wrong, stop there and
+   capture.
+2. **Capture Torpedo Remote** (Windows): `hidspy.py` attaches Frida to the
+   running `TorpedoRemote.exe` and logs every HID report it reads and writes,
+   without sending anything itself. Do one action in Remote every ~5 s so
+   they separate in the log, then condense it with `summarize.py`:
+
+   ```sh
+   uv venv fridaenv && VIRTUAL_ENV=fridaenv uv pip install frida
+   fridaenv/Scripts/python tools/hidspy.py captures/<name>.log
+   python tools/summarize.py captures/<name>.log 24
+   ```
+
+3. **Listen to the unit**: with Remote closed, `listen.py` only polls and logs
+   what the unit sends on its own (front-panel changes, meters); type a note
+   to label the next action.
+4. **Compare**: `ranges.py` pulls each parameter's min/max out of a capture
+   where every control was swept end to end, to check against
+   `src/torpedo/protocol.py`. `writetest.py --write` and `modeprobe.py` make
+   edits and then reselect the preset, so nothing is saved.
+
+Keep to the rule the client follows: only send command types seen in a
+capture of Remote, and range-check values first.
 
 ## Repository layout
 
@@ -205,9 +239,8 @@ from `mpc/`).
 
 ## License
 
-[CC0 1.0](LICENSE): public domain, do what you like with it. The
-`mpc/mpc-vst-plugins` submodule is MIT licensed, and its VST2 wrapper is built
-into the plugin, so a plugin build carries its notice too.
+[MIT](LICENSE), like the `mpc/mpc-vst-plugins` submodule. Its VST2 wrapper
+is built into the plugin, so a plugin build carries both notices.
 
 Torpedo, Torpedo Live and Torpedo Remote are trademarks of Two notes Audio
 Engineering; MPC is a trademark of inMusic Brands.
