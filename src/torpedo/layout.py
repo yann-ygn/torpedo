@@ -25,6 +25,9 @@ EQ_MODES = ("guitar", "bass", "custom")  # 0 = guitar on A001; ARCADE_GUITARBASS
 EQ_CUSTOM = 2
 EQ_BANDS = {0: ("120 Hz", "360 Hz", "800 Hz", "2 kHz", "6 kHz"),
             1: ("50 Hz", "120 Hz", "360 Hz", "800 Hz", "4 kHz")}
+# Custom EQ knobs, 0..127 from one end to the other (Hz, as Remote shows them; the user, 2026-10-19).
+EQ_LOW_CUT = (10, 500)
+EQ_FREQS = ((60, 240), (180, 720), (400, 1600), (1000, 4000), (3000, 12000))
 MODES = ("simulation", "arcade", "ir")  # PRESET_MODE
 OFF_ON = ("off", "on")
 CHARACTER = ("triode", "pentode")  # checked on the unit (2026-10-16)
@@ -47,6 +50,17 @@ def eq_custom(v: Values) -> bool:
 def band_freq(n: int) -> Callable[[Values], str]:
     """Text for band n's frequency when the EQ isn't in custom mode (fixed bands)."""
     return lambda v: EQ_BANDS.get(v.get(EQ_MODE), ("",) * 5)[n]
+
+
+def hz(f: float) -> str:
+    f = float(f"{f:.3g}")
+    return f"{f / 1000:g} kHz" if f >= 1000 else f"{f:g} Hz"
+
+
+def eq_freq(lo: int, hi: int) -> Callable[[int], str]:
+    """A custom EQ knob's frequency, on a log scale (the guitar EQ's fixed bands are each custom
+    range's middle: 120 Hz of 60..240 Hz...). Checked against Remote at 57: 112 Hz (2026-10-19)."""
+    return lambda v: hz(lo * (hi / lo) ** (v / 127))
 
 
 def eq_gain(v: int) -> str:
@@ -123,8 +137,9 @@ POWER_AMP = Section("POWER AMP", on_off("SIMUAMP"), Control("SIMUAMP_MODELE", CH
 ))
 
 EQ = Section("EQ", on_off("EQ"), Control("EQ_MODE", CHOICE, EQ_MODES), ("Freq", "Gain"), rows=(
-    Row("Low cut", (Control("EQ_L_FREQ_LOW"),), when=eq_custom),
-    *(Row(f"Band {n + 1}", (Control(f"EQ_L_FREQ_F{n}", when=eq_custom, otherwise=band_freq(n)),
+    Row("Low cut", (Control("EQ_L_FREQ_LOW", fmt=eq_freq(*EQ_LOW_CUT)),), when=eq_custom),
+    *(Row(f"Band {n + 1}", (Control(f"EQ_L_FREQ_F{n}", when=eq_custom, otherwise=band_freq(n),
+                                    fmt=eq_freq(*EQ_FREQS[n])),
                             Control(f"EQ_L_GAIN{n}", fmt=eq_gain)))
       for n in range(5)),
 ))

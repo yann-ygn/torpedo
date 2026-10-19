@@ -107,7 +107,7 @@ reference implementation.
   (PROTOCOL.md), and Remote only writes PRESET_MODE too (`01 22 0x` in the -irs and -presets
   captures, then `04 09 80` for the name's mode byte): so does the plugin.
   **EQ (2026-10-18):** Remote's custom EQ: low cut, then each band's gain over its frequency
-  (raw 0..127: the Hz mapping is unknown). The engine's virtual `eq_view` (hidden offline and in
+  (Hz on a log scale between the ends Remote shows, layout.py EQ_FREQS; checked against Remote 2026-10-19). The engine's virtual `eq_view` (hidden offline and in
   arcade / fixed / custom) drives it, since a line takes one condition; guitar/bass show the fixed
   band frequencies as labels. Q-Links: two neighbouring bands per group (low cut + band 1, 2-3,
   4-5: a tab has 4 groups); outside custom only the gains turn, the engine drops the rest

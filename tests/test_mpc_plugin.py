@@ -211,7 +211,7 @@ def test_band_frequencies_only_move_in_custom_eq(host, bridge):
     host.set("eq_l_freq_low", 30)
     host.settle()
     assert (bridge.fake.params[P["EQ_L_FREQ_F0"]], bridge.fake.params[P["EQ_L_FREQ_LOW"]]) == (70, 30)
-    assert host.text("eq_l_freq_f0") == "70"
+    assert host.text("eq_l_freq_f0") == "129 Hz"  # 60..240 Hz
 
 
 def test_front_panel_follows(host, bridge):
@@ -508,7 +508,7 @@ def test_mode_pages_and_ir_names(host, bridge):
     assert host.text("simuhp_wave1") == "ML-FRMN-V30-906-E"
     host.set("eq_mode", 2)  # custom: the band frequencies are the knobs' own
     host.settle()
-    assert host.text("eq_l_freq_f0") == "57"
+    assert host.text("eq_l_freq_f0") == "112 Hz"
 
 
 def test_instances_share_one_connection(host, bridge):

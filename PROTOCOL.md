@@ -347,8 +347,8 @@ those of preset A001.
 | 24 | SIMUHP_PHASE | 0 | |
 | 25 | SIMUHP_MUTE | 0 | |
 | 26–2C | SIMUHP_MIC_2, DISTANCE_2, CENTER_2, POSITION_2, LEVEL_2, PHASE_2, MUTE_2 | 0 0 0 1 95 0 1 | mic B |
-| 2D | EQ_L_FREQ_LOW | 0 | low cut, 0..127 |
-| 2E–32 | EQ_L_FREQ_F0..F4 | 57 ×5 | |
+| 2D | EQ_L_FREQ_LOW | 0 | low cut, 0..127 = 10..500 Hz, log scale (Remote) |
+| 2E–32 | EQ_L_FREQ_F0..F4 | 57 ×5 | custom bands, 0..127 = 60–240, 180–720, 400–1600, 1000–4000, 3000–12000 Hz Hz, log scale (Remote: 57 on band 1 = 112 Hz; the guitar EQ's fixed bands are each range's log middle) |
 
 Ranges come from sweeping every control to min/max in Torpedo Remote
 (`captures/2026-10-15-ranges.log`, summarized by `tools/ranges.py`); the
