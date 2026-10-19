@@ -85,7 +85,7 @@
    "key": "simuhp_speaker",
    "name": "Cabinet",
    "min": 0,
-   "max": 63,
+   "max": 31,
    "display": "int",
    "dynamic_display": true
   },
